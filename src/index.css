@@ -1,0 +1,105 @@
+@import "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@100;300;400&family=League+Gothic&display=swap";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 20% 97%;
+    --foreground: 48 20% 20%;
+
+    --card: 48 20% 97%;
+    --card-foreground: 60 4% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 50 19% 13%;
+
+    --primary: 15 54% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 48 21% 89%;
+    --secondary-foreground: 49 8% 30%;
+
+    --muted: 47 21% 90%;
+    --muted-foreground: 50 3% 50%;
+
+    --accent: 48 21% 89%;
+    --accent-foreground: 50 19% 13%;
+
+    --destructive: 60 4% 8%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 51 9% 84%;
+    --input: 51 9% 68%;
+    --ring: 15 54% 52%;
+
+    --radius: 0.5rem;
+
+    --navy: 222 84% 11%;
+    --navy-foreground: 210 40% 98%;
+
+    --sidebar-background: 48 20% 96%;
+    --sidebar-foreground: 49 8% 25%;
+    --sidebar-primary: 15 54% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 48 21% 89%;
+    --sidebar-accent-foreground: 50 19% 13%;
+    --sidebar-border: 51 9% 84%;
+    --sidebar-ring: 15 54% 52%;
+  }
+
+  .dark {
+    --background: 0 0% 9%;
+    --foreground: 0 0% 90%;
+    --card: 0 0% 15%;
+    --card-foreground: 0 0% 90%;
+    --popover: 0 0% 15%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 24 83% 31%;
+    --accent-foreground: 47 96% 77%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 25%;
+    --input: 0 0% 25%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
+
+@layer utilities {
+  .big-text {
+    @apply font-social uppercase font-bold;
+    letter-spacing: -0.03em;
+    color: hsl(var(--primary));
+    font-size: clamp(3rem, 8vw, 6rem);
+    line-height: 0.9;
+  }
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--primary)), #f59e0b);
+  }
+  .gradient-bg {
+    background-image: linear-gradient(135deg, hsl(var(--primary)), #f59e0b);
+  }
+}
