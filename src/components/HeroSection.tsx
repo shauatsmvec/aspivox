@@ -1,38 +1,38 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import Spline from "@splinetool/react-spline";
-import { useEffect, useState } from "react";
+import { lazy, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
+import { useQuery } from "@tanstack/react-query";
+
+const Spline = lazy(() => import("@splinetool/react-spline"));
 
 const HeroSection = () => {
-  const [studentCount, setStudentCount] = useState<string>("70+");
+  const { data: studentCount } = useQuery({
+    queryKey: ['hero_stats'],
+    queryFn: async () => {
+      const { data: baseData, error: baseError } = await supabase
+        .from('site_stats')
+        .select('value, suffix')
+        .eq('key', 'students_trained')
+        .single();
+      
+      if (baseError && baseError.code !== 'PGRST116') throw baseError;
+      
+      const { count: realCount, error: countError } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true });
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // 1. Get manual base counter
-        const { data: baseData } = await supabase
-          .from('site_stats')
-          .select('value, suffix')
-          .eq('key', 'students_trained')
-          .single();
-        
-        // 2. Get real signup count
-        const { count: realCount } = await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
 
-        const baseValue = baseData?.value || 70;
-        const finalCount = Math.max(baseValue, realCount || 0);
-        const suffix = baseData?.suffix || "+";
+      const baseValue = baseData?.value || 70;
+      const finalCount = Math.max(baseValue, realCount || 0);
+      const suffix = baseData?.suffix || "+";
 
-        setStudentCount(`${finalCount}${suffix}`);
-      } catch (err) {
-        console.error('Error fetching hero stats:', err);
-      }
-    };
-    fetchStats();
-  }, []);
+      return `${finalCount}${suffix}`;
+    },
+    initialData: "70+",
+    staleTime: 1000 * 60 * 5,
+  });
 
   return (
     <section
@@ -105,9 +105,11 @@ const HeroSection = () => {
           transition={{ duration: 1.2, delay: 0.3 }}
           className="w-full h-full"
         >
-          <Spline 
-            scene="https://prod.spline.design/dXbKN4kUfFQRNx-Q/scene.splinecode" 
-          />
+          <Suspense fallback={<div className="w-full h-full bg-transparent" />}>
+            <Spline 
+              scene="https://prod.spline.design/dXbKN4kUfFQRNx-Q/scene.splinecode" 
+            />
+          </Suspense>
         </motion.div>
         
         {/* Gradients to blend Spline */}

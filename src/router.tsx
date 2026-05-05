@@ -1,53 +1,97 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import Courses from "./pages/Courses";
-import Internship from "./pages/Internship";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import { StudentsList, EnrollmentsList, ApplicationsList, ContactsList, StatsManager, CoursesManager, TeamManager } from "./pages/admin/AdminSubPages";
+
+const Index = lazy(() => import("./pages/Index"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Courses = lazy(() => import("./pages/Courses"));
+const CourseDetail = lazy(() => import("./pages/CourseDetail"));
+const Internship = lazy(() => import("./pages/Internship"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+
+// Admin SubPages
+const StudentsList = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.StudentsList })));
+const EnrollmentsList = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.EnrollmentsList })));
+const ApplicationsList = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.ApplicationsList })));
+const ContactsList = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.ContactsList })));
+const StatsManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.StatsManager })));
+const CoursesManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.CoursesManager })));
+const TeamManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.TeamManager })));
+const InstructorManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.InstructorManager })));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const InstructorDashboard = lazy(() => import("./pages/InstructorDashboard"));
+
+// A simple fallback loader to show while the chunk is downloading
+const SuspenseFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+  </div>
+);
+
+const withSuspense = (Component: React.ComponentType) => (
+  <Suspense fallback={<SuspenseFallback />}>
+    <Component />
+  </Suspense>
+);
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <Index />,
+    element: withSuspense(Index),
   },
   {
     path: "/courses",
-    element: <Courses />,
+    element: withSuspense(Courses),
+  },
+  {
+    path: "/courses/:slug",
+    element: withSuspense(CourseDetail),
   },
   {
     path: "/internship",
-    element: <Internship />,
+    element: withSuspense(Internship),
   },
   {
     path: "/about",
-    element: <About />,
+    element: withSuspense(About),
   },
   {
     path: "/contact",
-    element: <Contact />,
+    element: withSuspense(Contact),
   },
   {
     path: "/login",
-    element: <Login />,
+    element: withSuspense(Login),
   },
   {
     path: "/signup",
-    element: <Signup />,
+    element: withSuspense(Signup),
+  },
+  {
+    path: "/forgot-password",
+    element: withSuspense(ForgotPassword),
+  },
+  {
+    path: "/reset-password",
+    element: withSuspense(ResetPassword),
   },
   {
     element: <ProtectedRoute />,
     children: [
       {
         path: "/dashboard",
-        element: <Dashboard />,
+        element: withSuspense(Dashboard),
+      },
+      {
+        path: "/instructor-dashboard",
+        element: withSuspense(InstructorDashboard),
       },
     ],
   },
@@ -56,39 +100,43 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/admin",
-        element: <AdminLayout />,
+        element: withSuspense(AdminLayout),
         children: [
           {
             index: true,
-            element: <AdminDashboard />,
+            element: withSuspense(AdminDashboard),
           },
           {
             path: "courses",
-            element: <CoursesManager />,
+            element: withSuspense(CoursesManager),
           },
           {
             path: "students",
-            element: <StudentsList />,
+            element: withSuspense(StudentsList),
           },
           {
             path: "enrollments",
-            element: <EnrollmentsList />,
+            element: withSuspense(EnrollmentsList),
           },
           {
             path: "applications",
-            element: <ApplicationsList />,
+            element: withSuspense(ApplicationsList),
           },
           {
             path: "contacts",
-            element: <ContactsList />,
+            element: withSuspense(ContactsList),
+          },
+           {
+            path: "team",
+            element: withSuspense(TeamManager),
           },
           {
-            path: "team",
-            element: <TeamManager />,
+            path: "instructors",
+            element: withSuspense(InstructorManager),
           },
           {
             path: "stats",
-            element: <StatsManager />,
+            element: withSuspense(StatsManager),
           },
         ],
       },
@@ -96,6 +144,6 @@ export const router = createBrowserRouter([
   },
   {
     path: "*",
-    element: <NotFound />,
+    element: withSuspense(NotFound),
   },
 ]);

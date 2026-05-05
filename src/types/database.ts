@@ -203,6 +203,38 @@ export interface Database {
           label?: string
         }
       }
+      lms_classes: {
+        Row: {
+          id: string
+          course_id: string
+          title: string
+          scheduled_at: string
+          meeting_link: string
+          notes_link: string | null
+          recording_link: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          course_id: string
+          title: string
+          scheduled_at: string
+          meeting_link: string
+          notes_link?: string | null
+          recording_link?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          course_id?: string
+          title?: string
+          scheduled_at?: string
+          meeting_link?: string
+          notes_link?: string | null
+          recording_link?: string | null
+          created_at?: string
+        }
+      }
     }
   }
 }

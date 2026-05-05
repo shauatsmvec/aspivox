@@ -11,9 +11,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const AdminLayout = () => {
   const location = useLocation();
+  const { signOut, user } = useAuth();
 
   const menuItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/admin' },
@@ -23,6 +27,7 @@ const AdminLayout = () => {
     { label: 'Enrollments', icon: BookOpen, href: '/admin/enrollments' },
     { label: 'Applications', icon: FileText, href: '/admin/applications' },
     { label: 'Contacts', icon: MessageSquare, href: '/admin/contacts' },
+    { label: 'Instructors', icon: Users, href: '/admin/instructors' },
     { label: 'Site Stats', icon: BarChart3, href: '/admin/stats' },
   ];
 
@@ -69,12 +74,33 @@ const AdminLayout = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-10 relative bg-background">
-        {/* Ambient glow */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
-        
-        <div className="max-w-6xl mx-auto relative z-10">
-          <Outlet />
+      <main className="flex-grow flex flex-col relative bg-background">
+        {/* Admin Header */}
+        <header className="h-16 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-50">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              {menuItems.find(m => m.href === location.pathname)?.label || 'Admin'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right mr-2 hidden sm:block">
+              <p className="text-[10px] font-bold text-foreground uppercase">{user?.email}</p>
+              <p className="text-[8px] text-muted-foreground uppercase tracking-widest">Administrator</p>
+            </div>
+            <ThemeToggle />
+            <Button onClick={() => signOut()} variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-destructive">
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </header>
+
+        <div className="p-10 flex-grow relative">
+          {/* Ambient glow */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
+          
+          <div className="max-w-6xl mx-auto relative z-10">
+            <Outlet />
+          </div>
         </div>
       </main>
     </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, BookOpen, FileText, MessageSquare, ArrowRight } from 'lucide-react';
@@ -8,20 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { useQuery } from '@tanstack/react-query';
 
 const AdminDashboard = () => {
   const { user, isAdmin } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    students: 0,
-    enrollments: 0,
-    applications: 0,
-    contacts: 0
-  });
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
+  const { data: stats = { students: 0, enrollments: 0, applications: 0, contacts: 0 }, isLoading: loading, refetch: fetchData } = useQuery({
+    queryKey: ['admin_dashboard_stats'],
+    queryFn: async () => {
       const [s, e, a, c] = await Promise.all([
         supabase.from('students').select('*', { count: 'exact', head: true }),
         supabase.from('enrollments').select('*', { count: 'exact', head: true }),
@@ -29,26 +22,19 @@ const AdminDashboard = () => {
         supabase.from('contact_submissions').select('*', { count: 'exact', head: true })
       ]);
 
-      setStats({
+      if (s.error || e.error || a.error || c.error) {
+        console.error('Data fetch error:', { s: s.error, e: e.error, a: a.error, c: c.error });
+      }
+
+      return {
         students: s.count || 0,
         enrollments: e.count || 0,
         applications: a.count || 0,
         contacts: c.count || 0
-      });
-      
-      if (s.error || e.error || a.error || c.error) {
-        console.error('Data fetch error:', { s: s.error, e: e.error, a: a.error, c: c.error });
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
+      };
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
 
   const cards = [
     { title: 'Total Students', value: stats.students, icon: Users, link: '/admin/students', color: 'text-cyan' },
