@@ -7,8 +7,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
+import { useAuth } from "@/context/AuthContext";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -18,31 +19,53 @@ const formSchema = z.object({
 });
 
 const ContactSection = () => {
+  const { user, studentProfile } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      email: "",
+      name: studentProfile?.full_name || "",
+      email: user?.email || "",
       subject: "",
       message: "",
     },
   });
 
+  useEffect(() => {
+    if (studentProfile || user) {
+      form.reset({
+        name: studentProfile?.full_name || user?.user_metadata?.full_name || "",
+        email: user?.email || "",
+        subject: form.getValues('subject'),
+        message: form.getValues('message'),
+      });
+    }
+  }, [studentProfile, user, form]);
+
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
-    const { error } = await supabase
-      .from('contact_submissions')
-      .insert([values]);
+    try {
+      const { error } = await supabase
+        .from('contact_submissions')
+        .insert([values]);
 
-    if (error) {
-      toast.error("Failed to send message: " + error.message);
-    } else {
-      toast.success("Message sent! We'll get back to you soon.");
-      form.reset();
+      if (error) {
+        toast.error("Failed to send message: " + error.message);
+      } else {
+        toast.success("Message sent! We'll get back to you soon.");
+        form.reset({
+          name: studentProfile?.full_name || "",
+          email: user?.email || "",
+          subject: "",
+          message: "",
+        });
+      }
+    } catch (err) {
+      toast.error("An unexpected error occurred.");
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (

@@ -36,8 +36,14 @@ const Navbar = () => {
   }, []);
 
   const handleLogout = async () => {
-    await signOut();
-    navigate('/');
+    try {
+      await signOut();
+      // Force a full page reload and redirect to home to clear all states
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Logout error:', err);
+      window.location.href = '/';
+    }
   };
 
   const handleNavClick = (id: string) => {

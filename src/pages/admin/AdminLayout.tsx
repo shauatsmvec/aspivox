@@ -69,7 +69,7 @@ const AdminLayout = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-10 relative overflow-hidden bg-background">
+      <main className="flex-grow p-10 relative bg-background">
         {/* Ambient glow */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
         

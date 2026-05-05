@@ -19,9 +19,9 @@ const HowItWorksSection = () => {
           className="text-center mb-20"
         >
           <h2 className="text-4xl sm:text-5xl font-bold font-display mb-4 text-foreground uppercase tracking-tight">
-            How it <span className="text-cyan">Works</span>
+            How it <span className="text-primary">Works</span>
           </h2>
-          <div className="w-24 h-1 bg-cyan mx-auto rounded-full" />
+          <div className="w-24 h-1 bg-primary mx-auto rounded-full" />
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-12">
@@ -34,8 +34,8 @@ const HowItWorksSection = () => {
               transition={{ duration: 0.4, delay: i * 0.1 }}
               className="text-center group"
             >
-              <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-6 border border-border group-hover:bg-cyan/10 group-hover:border-cyan/30 transition-all duration-500 shadow-lg">
-                <step.icon className="w-8 h-8 text-cyan" />
+              <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-6 border border-border group-hover:bg-primary/10 group-hover:border-primary/30 transition-all duration-500 shadow-lg">
+                <step.icon className="w-8 h-8 text-primary" />
               </div>
               <h3 className="text-2xl font-bold font-display uppercase tracking-tight mb-4 text-foreground">{step.title}</h3>
               <p className="text-muted-foreground font-light leading-relaxed">{step.text}</p>

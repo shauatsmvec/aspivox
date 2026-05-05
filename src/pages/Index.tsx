@@ -15,7 +15,7 @@ const Index = () => (
     <Navbar />
     <HeroSection />
     <AboutSection />
-    <CoursesSection />
+    <CoursesSection limit={6} />
     <InternshipSection />
     <AchievementsSection />
     <HowItWorksSection />

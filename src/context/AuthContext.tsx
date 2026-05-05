@@ -11,19 +11,14 @@ interface AuthContextType {
   studentProfile: StudentProfile | null;
   loading: boolean;
   isAdmin: boolean;
-  signUp: (data: {
-    email: string;
-    password: string;
-    full_name: string;
-    phone: string;
-    college: string;
-    city: string;
-  }) => Promise<{ error: any }>;
   signIn: (data: { email: string; password: any }) => Promise<{ error: any }>;
-  signOut: () => Promise<{ error: any }>;
+  signUp: (data: { email: string; password: any; full_name: string; phone: string; college: string; city: string }) => Promise<{ error: any }>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const ADMIN_EMAIL = 'shahid.aspivox@zohomail.in'.toLowerCase();
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -32,141 +27,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const adminEmail = 'shahid.aspivox@zohomail.in'.toLowerCase().trim();
-
-  const fetchStudentProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      return error ? null : data;
-    } catch {
-      return null;
-    }
+  const clearAuth = () => {
+    setUser(null);
+    setSession(null);
+    setStudentProfile(null);
+    setIsAdmin(false);
   };
 
-  const handleAuthStateChange = async (currentSession: Session | null, event: string = 'initial') => {
-    const currentUser = currentSession?.user ?? null;
-    console.log('Auth state change detected:', { event, email: currentUser?.email });
-    setSession(currentSession);
-    setUser(currentUser);
-    
-    if (currentUser) {
-      const isUserAdmin = currentUser.email?.toLowerCase().trim() === adminEmail;
-      console.log('Admin check:', { userEmail: currentUser.email?.toLowerCase().trim(), targetAdmin: adminEmail, isMatch: isUserAdmin });
-      setIsAdmin(isUserAdmin);
-      const profile = await fetchStudentProfile(currentUser.id);
-      setStudentProfile(profile);
-    } else {
-      setIsAdmin(false);
-      setStudentProfile(null);
+  const syncAuth = async (currSession: Session | null) => {
+    if (!currSession?.user) {
+      clearAuth();
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    const currUser = currSession.user;
+    setUser(currUser);
+    setSession(currSession);
+    setIsAdmin(currUser.email?.toLowerCase() === ADMIN_EMAIL);
+
+    try {
+      const { data } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', currUser.id)
+        .single();
+      setStudentProfile(data);
+    } catch (err) {
+      console.error('Profile sync error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    let mounted = true;
-
-    // Safety timeout: If Supabase doesn't respond in 5 seconds, stop loading
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('Auth initialization timed out. Checking local session...');
-        setLoading(false);
-      }
-    }, 5000);
-
-    const initialize = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-          // Actively verify the user exists on the server to catch deleted accounts
-          const { error: userError } = await supabase.auth.getUser();
-          if (userError) {
-            console.error('Session exists but user is invalid/deleted. Purging session.');
-            await supabase.auth.signOut();
-            if (mounted) await handleAuthStateChange(null, 'INVALID_SESSION');
-            return;
-          }
-        }
-
-        if (mounted) await handleAuthStateChange(session, 'INITIAL');
-      } catch (err) {
-        console.error('Auth initialization error:', err);
-        if (mounted) setLoading(false);
-      } finally {
-        clearTimeout(timeout);
-      }
-    };
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Supabase onAuthStateChange:', event);
-      if (mounted) {
-        await handleAuthStateChange(session, event);
-        if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setSession(null);
-          setStudentProfile(null);
-          setIsAdmin(false);
-        }
-      }
+    // Initial sync
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      syncAuth(session);
     });
 
-    initialize();
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncAuth(session);
+    });
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async ({ email, password, full_name, phone, college, city }: any) => {
+  const signIn = async (data: { email: string; password: any }) => {
+    return await supabase.auth.signInWithPassword(data);
+  };
+
+  const signUp = async (data: { email: string; password: any; full_name: string; phone: string; college: string; city: string }) => {
+    const { email, password, ...metadata } = data;
     return await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name, phone, college, city } }
+      options: { data: metadata }
     });
   };
 
-  const signIn = async ({ email, password }: any) => {
-    return await supabase.auth.signInWithPassword({ email, password });
-  };
-
   const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error('Error during signOut:', err);
-    } finally {
-      // Force clear state regardless of network success
-      setUser(null);
-      setSession(null);
-      setStudentProfile(null);
-      setIsAdmin(false);
-    }
+    await supabase.auth.signOut();
+    clearAuth();
+    window.location.href = '/';
   };
 
-  const value = {
-    user,
-    session,
-    studentProfile,
-    loading,
-    isAdmin,
-    signUp,
-    signIn,
-    signOut,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, session, studentProfile, loading, isAdmin, signIn, signUp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };

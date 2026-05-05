@@ -1,8 +1,39 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Spline from "@splinetool/react-spline";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 const HeroSection = () => {
+  const [studentCount, setStudentCount] = useState<string>("70+");
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        // 1. Get manual base counter
+        const { data: baseData } = await supabase
+          .from('site_stats')
+          .select('value, suffix')
+          .eq('key', 'students_trained')
+          .single();
+        
+        // 2. Get real signup count
+        const { count: realCount } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true });
+
+        const baseValue = baseData?.value || 70;
+        const finalCount = Math.max(baseValue, realCount || 0);
+        const suffix = baseData?.suffix || "+";
+
+        setStudentCount(`${finalCount}${suffix}`);
+      } catch (err) {
+        console.error('Error fetching hero stats:', err);
+      }
+    };
+    fetchStats();
+  }, []);
+
   return (
     <section
       id="home"
@@ -28,7 +59,7 @@ const HeroSection = () => {
             
             <p className="text-lg lg:text-xl text-muted-foreground mb-10 max-w-lg font-light leading-relaxed">
               Affordable, mentor-led programming courses for students. 
-              Join 70+ learners building their future with <span className="text-foreground font-medium">Aspivox</span>.
+              Join {studentCount} learners building their future with <span className="text-foreground font-medium">Aspivox</span>.
             </p>
 
             <div className="flex flex-wrap gap-5 mb-12">
@@ -52,7 +83,7 @@ const HeroSection = () => {
             {/* Compact Trust badges */}
             <div className="flex items-center gap-8">
               {[
-                { emoji: "🎓", text: "70+ Students" },
+                { emoji: "🎓", text: `${studentCount} Students` },
                 { emoji: "💻", text: "Online" },
                 { emoji: "✅", text: "MSME" },
               ].map((badge) => (

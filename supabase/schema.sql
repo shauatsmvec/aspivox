@@ -135,31 +135,27 @@ ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_stats ENABLE ROW LEVEL SECURITY;
 
--- 6. POLICIES
+-- 6. MASTER POLICIES
 
--- Public Read Access
-CREATE POLICY "Public view courses" ON courses FOR SELECT USING (true);
-CREATE POLICY "Public view team" ON team_members FOR SELECT USING (true);
-CREATE POLICY "Public view stats" ON site_stats FOR SELECT USING (true);
+-- PUBLIC READ (No Auth)
+CREATE POLICY "Public select courses" ON courses FOR SELECT USING (true);
+CREATE POLICY "Public select team" ON team_members FOR SELECT USING (true);
+CREATE POLICY "Public select stats" ON site_stats FOR SELECT USING (true);
 
--- Anonymous Submissions
-CREATE POLICY "Anyone can submit contact" ON contact_submissions FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anyone can apply internship" ON internship_applications FOR INSERT WITH CHECK (true);
+-- PUBLIC INSERT (No Auth)
+CREATE POLICY "Public insert contact" ON contact_submissions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public insert applications" ON internship_applications FOR INSERT WITH CHECK (true);
 
--- Student Policies
-CREATE POLICY "Students read own profile" ON students FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Students update own profile" ON students FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Students view own enrollments" ON enrollments FOR SELECT USING (auth.uid() = student_id);
-CREATE POLICY "Students create enrollment" ON enrollments FOR INSERT WITH CHECK (auth.uid() = student_id);
+-- STUDENT SELF-SERVICE
+CREATE POLICY "Students manage profile" ON students FOR ALL USING (auth.uid() = id);
+CREATE POLICY "Students manage enrollments" ON enrollments FOR ALL USING (auth.uid() = student_id);
 
--- Admin Policies (shahid.aspivox@zohomail.in)
--- These use auth.jwt() which is the most secure way to check identity in RLS
-CREATE POLICY "Admin students" ON students FOR ALL USING (auth.jwt() ->> 'email' = 'shahid.aspivox@zohomail.in');
-CREATE POLICY "Admin enrollments" ON enrollments FOR ALL USING (auth.jwt() ->> 'email' = 'shahid.aspivox@zohomail.in');
-CREATE POLICY "Admin applications" ON internship_applications FOR ALL USING (auth.jwt() ->> 'email' = 'shahid.aspivox@zohomail.in');
-CREATE POLICY "Admin contacts" ON contact_submissions FOR ALL USING (auth.jwt() ->> 'email' = 'shahid.aspivox@zohomail.in');
-CREATE POLICY "Admin stats" ON site_stats FOR ALL USING (auth.jwt() ->> 'email' = 'shahid.aspivox@zohomail.in');
-
--- NOTE: If you are having trouble with admin access, ensure your email is confirmed in Supabase.
--- You can manually confirm a user in the Supabase Dashboard: Authentication > Users > (User) > Confirm User.
--- Or disable email confirmation: Authentication > Settings > Email Auth > Confirm email (toggle off).
+-- UNIVERSAL ADMIN (shahid.aspivox@zohomail.in)
+-- This grants full power based on the lowercased email in the JWT.
+CREATE POLICY "Admin master students" ON students FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master enrollments" ON enrollments FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master applications" ON internship_applications FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master contacts" ON contact_submissions FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master stats" ON site_stats FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master team" ON team_members FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master courses" ON courses FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');

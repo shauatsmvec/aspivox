@@ -6,8 +6,16 @@ const Courses = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="pt-20">
-        <CoursesSection />
+      <div className="pt-32 pb-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
+          <h1 className="text-4xl sm:text-6xl font-bold font-display uppercase tracking-tight text-foreground mb-4">
+            Full Course <span className="text-primary">Catalog</span>
+          </h1>
+          <p className="text-muted-foreground text-lg font-light max-w-2xl mx-auto">
+            Explore our complete range of mentor-led programs designed to bridge the gap between academics and industry.
+          </p>
+        </div>
+        <CoursesSection isFullView />
       </div>
       <Footer />
     </div>

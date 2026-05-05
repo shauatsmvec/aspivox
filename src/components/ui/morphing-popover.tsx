@@ -210,7 +210,7 @@ export function MorphingPopoverContent({
             role='dialog'
             aria-modal='true'
             className={cn(
-              'absolute overflow-hidden rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md',
+              'absolute z-50 overflow-y-auto max-h-[85vh] rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md',
               className
             )}
             initial='initial'

@@ -25,7 +25,7 @@ const formSchema = z.object({
 });
 
 const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
-  const { user, studentProfile } = useAuth();
+  const { user, studentProfile, loading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [courses, setCourses] = useState<any[]>([]);
 
@@ -56,18 +56,19 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
   }, []);
 
   useEffect(() => {
-    if (studentProfile || user) {
+    if (!loading && (studentProfile || user)) {
+      console.log('Auto-filling form with profile:', studentProfile?.full_name);
       form.reset({
-        full_name: studentProfile?.full_name || "",
+        full_name: studentProfile?.full_name || user?.user_metadata?.full_name || "",
         email: user?.email || "",
-        phone: studentProfile?.phone || "",
-        college: studentProfile?.college || "",
+        phone: studentProfile?.phone || user?.user_metadata?.phone || "",
+        college: studentProfile?.college || user?.user_metadata?.college || "",
         duration: "30",
-        preferred_domain: "",
-        message: "",
+        preferred_domain: form.getValues('preferred_domain'),
+        message: form.getValues('message'),
       });
     }
-  }, [studentProfile, user, form]);
+  }, [studentProfile, user, loading, form]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
