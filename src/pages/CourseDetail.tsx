@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, BookOpen, Clock, Award, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import SEO from '@/components/SEO';
 
 const CourseDetail = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -63,6 +64,7 @@ const CourseDetail = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
+      <SEO title={`${course.title} | Aspivox`} description={course.description || "Master the fundamentals and advanced concepts."} />
       {/* Background glow effects */}
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-cyan/10 blur-[100px] rounded-full pointer-events-none" />

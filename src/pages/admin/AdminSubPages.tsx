@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logActivity } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   UserPlus,
   Video,
-  Search
+  Search,
+  Activity
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { MorphingPopover, MorphingPopoverTrigger, MorphingPopoverContent } from "@/components/ui/morphing-popover";
@@ -25,6 +26,7 @@ import { z } from "zod";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 
 const TableSkeleton = ({ cols }: { cols: number }) => (
   <TableBody>
@@ -62,8 +64,11 @@ export const CourseLmsManager = ({ courseId }: { courseId: string }) => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this class?')) return;
-    await supabase.from('lms_classes').delete().eq('id', id);
-    queryClient.invalidateQueries({ queryKey: ['admin_lms_classes', courseId] });
+    const { error } = await supabase.from('lms_classes').delete().eq('id', id);
+    if (!error) {
+      logActivity('delete_class', `Deleted class ID: ${id}`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['admin_lms_classes', courseId] });
+    }
   };
 
   const LmsSchema = z.object({
@@ -254,12 +259,13 @@ export const CoursesManager = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCourse, setEditingCourse] = useState<any>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isCourseFree, setIsCourseFree] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: courses = [], isLoading: loading } = useQuery({
     queryKey: ['admin_courses'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('courses').select('*, lms_classes(id, is_completed)').order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     }
@@ -303,6 +309,7 @@ export const CoursesManager = () => {
     title: z.string().min(3, "Title must be at least 3 characters"),
     slug: z.string().min(3, "Slug must be at least 3 characters").regex(/^[a-z0-9-]+$/, "Slug must only contain lowercase letters, numbers, and hyphens"),
     price: z.number().min(0, "Price cannot be negative"),
+    is_free: z.boolean(),
     is_active: z.boolean(),
     description: z.string().optional(),
   });
@@ -313,7 +320,8 @@ export const CoursesManager = () => {
     const rawPayload = {
       title: formData.get('title'),
       slug: formData.get('slug'),
-      price: parseInt(formData.get('price') as string),
+      is_free: formData.get('is_free') === 'true',
+      price: formData.get('is_free') === 'true' ? 0 : parseInt(formData.get('price') as string || '0'),
       is_active: formData.get('is_active') === 'true',
       description: formData.get('description'),
     };
@@ -348,7 +356,7 @@ export const CoursesManager = () => {
         </div>
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => setEditingCourse(null)} className="bg-primary text-primary-foreground font-bold h-10 rounded-xl px-6 uppercase tracking-widest transition-all">
+            <Button onClick={() => { setEditingCourse(null); setIsCourseFree(false); }} className="bg-primary text-primary-foreground font-bold h-10 rounded-xl px-6 uppercase tracking-widest transition-all">
               <Plus className="w-4 h-4 mr-2" /> Add Course
             </Button>
           </DialogTrigger>
@@ -369,9 +377,23 @@ export const CoursesManager = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Price (₹)</Label>
-                  <Input name="price" type="number" defaultValue={editingCourse?.price} required className="bg-background border-border rounded-xl" />
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Pricing Type</Label>
+                  <Select name="is_free" value={isCourseFree ? 'true' : 'false'} onValueChange={(val) => setIsCourseFree(val === 'true')}>
+                    <SelectTrigger className="bg-background border-border rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      <SelectItem value="false">Paid</SelectItem>
+                      <SelectItem value="true">Free</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                {!isCourseFree && (
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Price (₹)</Label>
+                    <Input name="price" type="number" defaultValue={editingCourse?.price || 0} required className="bg-background border-border rounded-xl" />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label className="text-[10px] font-bold uppercase text-muted-foreground">Status</Label>
                   <Select name="is_active" defaultValue={editingCourse?.is_active?.toString() || 'true'}>
@@ -397,54 +419,62 @@ export const CoursesManager = () => {
         </Dialog>
       </CardHeader>
       <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Title</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Price</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Status</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? <TableSkeleton cols={4} /> : (
-            <TableBody>
-              {filteredCourses.map((course: any) => (
-                <TableRow key={course.id} className="border-border hover:bg-accent/50">
-                  <TableCell className="text-foreground font-medium">{course.title}</TableCell>
-                  <TableCell className="text-muted-foreground">₹{course.price}</TableCell>
-                  <TableCell>
-                    <Badge className={cn("rounded-full cursor-pointer", course.is_active ? "bg-primary/20 text-primary border-primary/20" : "bg-muted text-muted-foreground")} onClick={() => toggleActive(course.id, course.is_active)}>
-                      {course.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right flex justify-end gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 px-3 text-[10px] font-bold uppercase text-cyan">
-                          <Video className="w-3 h-3 mr-1" /> Classes
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-card border-border sm:max-w-[700px] rounded-3xl">
-                        <DialogHeader>
-                          <DialogTitle className="font-display uppercase text-xl">Manage Classes for {course.title}</DialogTitle>
-                        </DialogHeader>
-                        <div className="mt-4">
-                          <CourseLmsManager courseId={course.id} />
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                     <Button variant="ghost" size="sm" onClick={() => { setEditingCourse(course); setIsFormOpen(true); }} className="h-8 px-3 text-[10px] font-bold uppercase text-primary">
-                      <Pencil className="w-3 h-3 mr-1" /> Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(course.id)} className="h-8 px-3 text-[10px] font-bold uppercase text-destructive">
-                      <Trash2 className="w-3 h-3 mr-1" /> Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          )}
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Title</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Price</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Classes</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Status</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={5} /> : (
+              <TableBody>
+                {filteredCourses.map((course: any) => (
+                  <TableRow key={course.id} className="border-border hover:bg-accent/50">
+                    <TableCell className="text-foreground font-medium">{course.title}</TableCell>
+                    <TableCell className="text-muted-foreground">{course.is_free ? 'Free' : `₹${course.price}`}</TableCell>
+                    <TableCell>
+                      <div className="text-xs text-muted-foreground font-mono bg-muted/50 inline-block px-2 py-1 rounded-md">
+                        <span className="text-green-500 font-bold">{course.lms_classes?.filter((c:any) => c.is_completed).length || 0}</span> / {course.lms_classes?.length || 0}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn("rounded-full cursor-pointer", course.is_active ? "bg-primary/20 text-primary border-primary/20" : "bg-muted text-muted-foreground")} onClick={() => toggleActive(course.id, course.is_active)}>
+                        {course.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right flex justify-end gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 px-3 text-[10px] font-bold uppercase text-cyan">
+                            <Video className="w-3 h-3 mr-1" /> Classes
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="bg-card border-border sm:max-w-[700px] rounded-3xl">
+                          <DialogHeader>
+                            <DialogTitle className="font-display uppercase text-xl">Manage Classes for {course.title}</DialogTitle>
+                          </DialogHeader>
+                          <div className="mt-4">
+                            <CourseLmsManager courseId={course.id} />
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Button variant="ghost" size="sm" onClick={() => { setEditingCourse(course); setIsCourseFree(course.is_free); setIsFormOpen(true); }} className="h-8 px-3 text-[10px] font-bold uppercase text-primary">
+                        <Pencil className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(course.id)} className="h-8 px-3 text-[10px] font-bold uppercase text-destructive">
+                        <Trash2 className="w-3 h-3 mr-1" /> Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -571,6 +601,7 @@ export const StudentsList = () => {
     },
     onSuccess: () => {
       toast.success('Student deleted');
+      logActivity('delete_student', `Permanently deleted student profile`, user?.email);
       queryClient.invalidateQueries({ queryKey: ['admin_students'] });
     },
     onError: (err: any) => toast.error(err.message)
@@ -602,59 +633,61 @@ export const StudentsList = () => {
         </div>
       </CardHeader>
       <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Email</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? <TableSkeleton cols={3} /> : (
-            <TableBody>
-              {filteredStudents.map((student: any) => (
-                <TableRow key={student.id} className="border-border hover:bg-accent/50">
-                  <TableCell className="font-medium text-foreground">{student.full_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{student.email}</TableCell>
-                   <TableCell className="text-right flex justify-end gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 text-primary uppercase text-[10px] font-bold">
-                          View
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-card border-border sm:max-w-[700px] rounded-3xl">
-                        <DialogHeader>
-                          <DialogTitle className="font-display uppercase text-xl">Student Profile: {student.full_name}</DialogTitle>
-                        </DialogHeader>
-                        <div className="mt-6">
-                          <StudentProfileView student={student} />
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Email</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={3} /> : (
+              <TableBody>
+                {filteredStudents.map((student: any) => (
+                  <TableRow key={student.id} className="border-border hover:bg-accent/50">
+                    <TableCell className="font-medium text-foreground">{student.full_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                    <TableCell className="text-right flex justify-end gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 text-primary uppercase text-[10px] font-bold">
+                            View
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="bg-card border-border sm:max-w-[700px] rounded-3xl">
+                          <DialogHeader>
+                            <DialogTitle className="font-display uppercase text-xl">Student Profile: {student.full_name}</DialogTitle>
+                          </DialogHeader>
+                          <div className="mt-6">
+                            <StudentProfileView student={student} />
+                          </div>
+                        </DialogContent>
+                      </Dialog>
 
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => { setEditingStudent(student); setIsEditOpen(true); }}
-                      className="h-8 text-cyan uppercase text-[10px] font-bold"
-                    >
-                      Edit
-                    </Button>
-                     <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => deleteMutation.mutate(student.id)}
-                      className="h-8 text-destructive uppercase text-[10px] font-bold"
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          )}
-        </Table>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => { setEditingStudent(student); setIsEditOpen(true); }}
+                        className="h-8 text-cyan uppercase text-[10px] font-bold"
+                      >
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => deleteMutation.mutate(student.id)}
+                        className="h-8 text-destructive uppercase text-[10px] font-bold"
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
+          </Table>
+        </div>
 
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
           <DialogContent className="bg-card border-border sm:max-w-[400px] rounded-3xl p-6">
@@ -691,13 +724,20 @@ export const StudentsList = () => {
 
 export const EnrollmentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'completed' | 'cancelled'>('pending');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [actionConfig, setActionConfig] = useState<{type: 'complete' | 'cancel' | 'delete' | 'active' | 'revoke', ids: string[]} | null>(null);
+  const [password, setPassword] = useState('');
+  const [revocationReason, setRevocationReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: enrollments = [], isLoading: loading } = useQuery({
     queryKey: ['admin_enrollments'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('enrollments').select('*, courses(title), students(full_name, email)').order('enrolled_at', { ascending: false });
+      const { data, error } = await supabase.from('enrollments').select('*, courses(title), students(full_name, email), certificates(certificate_code)').order('enrolled_at', { ascending: false });
       if (error) throw error;
       return data || [];
     }
@@ -707,21 +747,216 @@ export const EnrollmentsList = () => {
     const matchesSearch = (e.courses?.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (e.students?.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (e.students?.email || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    
+    const matchesTab = e.status === activeTab;
+
+    return matchesSearch && matchesTab;
   });
 
-  const updateStatus = async (id: string, status: string) => {
-    await supabase.from('enrollments').update({ status }).eq('id', id);
-    queryClient.invalidateQueries({ queryKey: ['admin_enrollments'] });
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) setSelectedIds(filteredEnrollments.map((enr: any) => enr.id));
+    else setSelectedIds([]);
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) setSelectedIds(prev => [...prev, id]);
+    else setSelectedIds(prev => prev.filter(i => i !== id));
+  };
+
+  const executeAction = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!actionConfig) return;
+    setActionLoading(true);
+
+    try {
+      // 1. Password Verification for destructive actions
+      if (actionConfig.type === 'cancel' || actionConfig.type === 'delete') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: user?.email || '',
+          password: password,
+        });
+        if (error) throw new Error('Invalid Admin Password. Action aborted.');
+      }
+
+      // 2. Execution
+      if (actionConfig.type === 'delete') {
+        const { error } = await supabase.from('enrollments').delete().in('id', actionConfig.ids);
+        if (error) throw error;
+        toast.success(`Successfully deleted ${actionConfig.ids.length} enrollment(s).`);
+      } 
+      else if (actionConfig.type === 'cancel') {
+        const { error } = await supabase.from('enrollments').update({ status: 'cancelled' }).in('id', actionConfig.ids);
+        if (error) throw error;
+        toast.success(`Successfully cancelled ${actionConfig.ids.length} enrollment(s).`);
+      }
+      else if (actionConfig.type === 'active') {
+        const { error } = await supabase.from('enrollments').update({ status: 'active' }).in('id', actionConfig.ids);
+        if (error) throw error;
+        toast.success(`Successfully confirmed ${actionConfig.ids.length} enrollment(s) to Active.`);
+      }
+      else if (actionConfig.type === 'complete') {
+        const now = new Date();
+        for (const id of actionConfig.ids) {
+          const enr = enrollments.find((e:any) => e.id === id);
+          if (!enr) continue;
+
+          // Cooldown check
+          if (enr.revoked_at) {
+            const revokedTime = new Date(enr.revoked_at);
+            const diffHours = Math.abs(now.getTime() - revokedTime.getTime()) / 3600000;
+            if (diffHours < 1) {
+              throw new Error(`Cannot complete enrollment for ${enr.students?.full_name}. Cooldown active (${Math.ceil(60 - diffHours*60)} mins remaining).`);
+            }
+          }
+
+          // Check if certificate exists
+          const { data: existing } = await supabase.from('certificates').select('*').eq('enrollment_id', enr.id).maybeSingle();
+          if (!existing) {
+            const code = `ASP-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${new Date().getFullYear()}`;
+            const { error: certErr } = await supabase.from('certificates').insert([{
+              certificate_code: code,
+              enrollment_id: enr.id,
+              student_name: enr.students?.full_name || 'Student',
+              course_name: enr.courses?.title || 'Course'
+            }]);
+            if (certErr) throw certErr;
+          }
+          const { error: updErr } = await supabase.from('enrollments').update({ status: 'completed' }).eq('id', enr.id);
+          if (updErr) throw updErr;
+        }
+        
+        // Increment site stats for Students Trained
+        const { data: stats, error: statsGetErr } = await supabase.from('site_stats').select('value').eq('key', 'students_trained').maybeSingle();
+        if (statsGetErr) throw statsGetErr;
+        if (stats) {
+          const { error: statsUpdErr } = await supabase.from('site_stats').update({ value: stats.value + actionConfig.ids.length }).eq('key', 'students_trained');
+          if (statsUpdErr) throw statsUpdErr;
+        }
+
+        toast.success(`Successfully completed ${actionConfig.ids.length} enrollment(s). Certificates generated.`);
+        logActivity('complete_enrollment', `Completed ${actionConfig.ids.length} enrollment(s). IDs: ${actionConfig.ids.join(', ')}`, user?.email);
+      }
+      else if (actionConfig.type === 'revoke') {
+        if (!revocationReason.trim()) throw new Error("A revocation reason is required.");
+        
+        for (const id of actionConfig.ids) {
+          const enr = enrollments.find((e:any) => e.id === id);
+          if (!enr) continue;
+
+          // Delete certificates
+          const { error: delErr } = await supabase.from('certificates').delete().eq('enrollment_id', enr.id);
+          if (delErr) throw delErr;
+          
+          // Update enrollment
+          const { error: updErr } = await supabase.from('enrollments').update({ 
+            status: 'active', 
+            revocation_reason: revocationReason,
+            revoked_at: new Date().toISOString()
+          }).eq('id', enr.id);
+          if (updErr) throw updErr;
+        }
+
+        // Decrement site stats safely
+        const { data: stats, error: statsGetErr } = await supabase.from('site_stats').select('value').eq('key', 'students_trained').maybeSingle();
+        if (statsGetErr) throw statsGetErr;
+        if (stats) {
+          const { error: statsUpdErr } = await supabase.from('site_stats').update({ value: Math.max(0, stats.value - actionConfig.ids.length) }).eq('key', 'students_trained');
+          if (statsUpdErr) throw statsUpdErr;
+        }
+
+        toast.success(`Successfully revoked ${actionConfig.ids.length} enrollment(s). Certificates destroyed.`);
+        logActivity('revoke_enrollment', `Revoked ${actionConfig.ids.length} enrollment(s) for reason: ${revocationReason}. IDs: ${actionConfig.ids.join(', ')}`, user?.email);
+      }
+
+      // Clean up
+      queryClient.invalidateQueries({ queryKey: ['admin_enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['student_enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_dashboard_stats'] });
+      setSelectedIds([]);
+      setActionConfig(null);
+      setPassword('');
+      setRevocationReason('');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const renderActionDialog = () => {
+    if (!actionConfig) return null;
+    const isDestructive = actionConfig.type === 'cancel' || actionConfig.type === 'delete' || actionConfig.type === 'revoke';
+
+    return (
+      <Dialog open={!!actionConfig} onOpenChange={(open) => {
+        if (!open) {
+          setActionConfig(null);
+          setPassword('');
+          setRevocationReason('');
+        }
+      }}>
+        <DialogContent className="bg-card border-border sm:max-w-[425px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display uppercase tracking-tight text-xl">
+              {actionConfig.type === 'complete' && 'Mark as Completed'}
+              {actionConfig.type === 'cancel' && 'Cancel Enrollments'}
+              {actionConfig.type === 'delete' && 'Delete Enrollments'}
+              {actionConfig.type === 'active' && 'Activate Enrollments'}
+              {actionConfig.type === 'revoke' && 'Revoke Completion'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={executeAction} className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">
+              {actionConfig.type === 'complete' && `Are you sure you want to mark ${actionConfig.ids.length} student(s) as completed? This will automatically generate their certificates.`}
+              {actionConfig.type === 'cancel' && `Are you sure you want to cancel ${actionConfig.ids.length} enrollment(s)?`}
+              {actionConfig.type === 'delete' && `Are you sure you want to permanently delete ${actionConfig.ids.length} enrollment(s)? This action cannot be undone.`}
+              {actionConfig.type === 'active' && `Are you sure you want to confirm ${actionConfig.ids.length} enrollment(s)? This will grant them access to the LMS.`}
+              {actionConfig.type === 'revoke' && `Are you sure you want to revoke ${actionConfig.ids.length} student(s)? Their certificates will be destroyed and they will be moved back to Active status.`}
+            </p>
+
+            {actionConfig.type === 'revoke' && (
+              <div className="space-y-2 mt-4">
+                <Label className="text-xs font-bold uppercase text-muted-foreground">Reason for Revocation</Label>
+                <Textarea 
+                  value={revocationReason} 
+                  onChange={e => setRevocationReason(e.target.value)} 
+                  required 
+                  className="bg-background border-border rounded-xl min-h-[100px]" 
+                  placeholder="Provide a reason. The student will see this on their dashboard."
+                />
+              </div>
+            )}
+
+            {isDestructive && (
+              <div className="space-y-2 mt-4">
+                <Label className="text-xs font-bold uppercase text-muted-foreground">Admin Password Required</Label>
+                <Input 
+                  type="password" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required 
+                  className="bg-background border-border rounded-xl h-12" 
+                  placeholder="Enter your password to confirm"
+                />
+              </div>
+            )}
+
+            <Button disabled={actionLoading || (isDestructive && !password)} type="submit" className={cn("w-full font-bold rounded-xl h-12 uppercase tracking-wider mt-4", isDestructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : "bg-primary text-primary-foreground")}>
+              {actionLoading ? 'Processing...' : 'Confirm Action'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
   };
 
   return (
     <Card className="bg-card border-border rounded-3xl overflow-hidden shadow-2xl">
-      <CardHeader className="border-b border-border pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <CardTitle className="text-2xl font-display uppercase">Enrollments</CardTitle>
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <div className="relative w-full sm:w-64">
+      <CardHeader className="border-b border-border pb-6 flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <CardTitle className="text-2xl font-display uppercase">Enrollments</CardTitle>
+          <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Search enrollments..." 
@@ -730,55 +965,113 @@ export const EnrollmentsList = () => {
               className="pl-10 bg-background border-border rounded-xl h-10 text-xs"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-32 bg-background border-border rounded-xl h-10 text-xs">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border">
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+        </div>
+
+        {/* Custom Tabs */}
+        <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto scrollbar-hide">
+          {(['pending', 'active', 'completed', 'cancelled'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSelectedIds([]); }}
+              className={cn(
+                "px-4 py-2 text-xs font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap",
+                activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </CardHeader>
-      <CardContent className="pt-6">
-        <Table>
+      
+      <CardContent className="pt-6 relative">
+        {selectedIds.length > 0 && (
+          <div className="absolute top-0 left-0 right-0 bg-accent/80 backdrop-blur border-b border-border p-3 flex items-center justify-between z-10 animate-in fade-in slide-in-from-top-4">
+            <span className="text-sm font-bold text-foreground px-4">{selectedIds.length} Selected</span>
+            <div className="flex gap-2 pr-4">
+              {activeTab === 'pending' && (
+                <Button size="sm" onClick={() => setActionConfig({type: 'active', ids: selectedIds})} className="h-8 bg-cyan/20 text-cyan hover:bg-cyan/30 text-[10px] uppercase font-bold tracking-widest rounded-lg">Confirm Active</Button>
+              )}
+              {activeTab === 'active' && (
+                <Button size="sm" onClick={() => setActionConfig({type: 'complete', ids: selectedIds})} className="h-8 bg-green-500/20 text-green-500 hover:bg-green-500/30 text-[10px] uppercase font-bold tracking-widest rounded-lg">Mark Completed</Button>
+              )}
+              {activeTab !== 'cancelled' && (
+                <Button size="sm" onClick={() => setActionConfig({type: 'cancel', ids: selectedIds})} className="h-8 bg-orange-500/20 text-orange-500 hover:bg-orange-500/30 text-[10px] uppercase font-bold tracking-widest rounded-lg">Cancel</Button>
+              )}
+              <Button size="sm" onClick={() => setActionConfig({type: 'delete', ids: selectedIds})} className="h-8 bg-destructive/20 text-destructive hover:bg-destructive/30 text-[10px] uppercase font-bold tracking-widest rounded-lg">Delete</Button>
+            </div>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <Table className={cn(selectedIds.length > 0 && "mt-12 transition-all")}>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="w-12">
+                <input 
+                  type="checkbox" 
+                  className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                  checked={filteredEnrollments.length > 0 && selectedIds.length === filteredEnrollments.length}
+                  onChange={handleSelectAll}
+                />
+              </TableHead>
               <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Course</TableHead>
               <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Student</TableHead>
               <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Status</TableHead>
               <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          {loading ? <TableSkeleton cols={4} /> : (
+          {loading ? <TableSkeleton cols={5} /> : (
             <TableBody>
               {filteredEnrollments.map((enr: any) => (
                 <TableRow key={enr.id} className="border-border hover:bg-accent/50">
-                  <TableCell className="text-muted-foreground">{enr.courses?.title}</TableCell>
+                  <TableCell>
+                     <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                      checked={selectedIds.includes(enr.id)}
+                      onChange={(e) => handleSelectOne(enr.id, e.target.checked)}
+                    />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {enr.courses?.title}
+                    {enr.status === 'completed' && enr.certificates && enr.certificates[0] && (
+                      <div className="text-[10px] text-green-500/80 mt-1 font-mono">{enr.certificates[0].certificate_code}</div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-foreground">{enr.students?.full_name}</TableCell>
                   <TableCell>
-                    <Select onValueChange={(val) => updateStatus(enr.id, val)} defaultValue={enr.status}>
-                      <SelectTrigger className="w-[120px] bg-background h-8 text-[10px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover border-border">
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Badge className={cn("rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest border-none", 
+                      enr.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+                      enr.status === 'active' ? 'bg-cyan/20 text-cyan' :
+                      enr.status === 'cancelled' ? 'bg-destructive/20 text-destructive' :
+                      'bg-muted/50 text-muted-foreground'
+                    )}>
+                      {enr.status}
+                    </Badge>
                   </TableCell>
-                  <TableCell className="text-right"></TableCell>
+                   <TableCell className="text-right">
+                     <div className="flex justify-end gap-2">
+                       {activeTab === 'pending' && (
+                         <Button variant="ghost" size="sm" onClick={() => setActionConfig({type: 'active', ids: [enr.id]})} className="h-8 text-cyan uppercase text-[10px] font-bold hover:bg-cyan/10">Confirm</Button>
+                       )}
+                       {activeTab === 'active' && (
+                         <Button variant="ghost" size="sm" onClick={() => setActionConfig({type: 'complete', ids: [enr.id]})} className="h-8 text-primary uppercase text-[10px] font-bold hover:bg-primary/10">Complete</Button>
+                       )}
+                       {activeTab === 'completed' && (
+                         <Button variant="ghost" size="sm" onClick={() => setActionConfig({type: 'revoke', ids: [enr.id]})} className="h-8 text-destructive uppercase text-[10px] font-bold hover:bg-destructive/10">Revoke</Button>
+                       )}
+                       <Button variant="ghost" size="sm" onClick={() => setActionConfig({type: 'delete', ids: [enr.id]})} className="h-8 text-destructive uppercase text-[10px] font-bold hover:bg-destructive/10">Delete</Button>
+                     </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           )}
         </Table>
+      </div>
+
+        {renderActionDialog()}
       </CardContent>
     </Card>
   );
@@ -839,37 +1132,39 @@ export const ApplicationsList = () => {
         </div>
       </CardHeader>
       <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Domain</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? <TableSkeleton cols={3} /> : (
-            <TableBody>
-              {filteredApplications.map((app: any) => (
-                <TableRow key={app.id} className="border-border hover:bg-accent/50">
-                  <TableCell className="text-foreground">{app.full_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{app.preferred_domain}</TableCell>
-                  <TableCell className="text-right">
-                    <Select onValueChange={(val) => updateStatus(app.id, val)} defaultValue={app.status}>
-                      <SelectTrigger className="w-[120px] ml-auto bg-background h-8 text-[10px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover border-border">
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="accepted">Accepted</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          )}
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Domain</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={3} /> : (
+              <TableBody>
+                {filteredApplications.map((app: any) => (
+                  <TableRow key={app.id} className="border-border hover:bg-accent/50">
+                    <TableCell className="text-foreground">{app.full_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{app.preferred_domain}</TableCell>
+                    <TableCell className="text-right">
+                      <Select onValueChange={(val) => updateStatus(app.id, val)} defaultValue={app.status}>
+                        <SelectTrigger className="w-[120px] ml-auto bg-background h-8 text-[10px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover border-border">
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="accepted">Accepted</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -908,26 +1203,28 @@ export const ContactsList = () => {
         </div>
       </CardHeader>
       <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Subject</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Date</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? <TableSkeleton cols={3} /> : (
-            <TableBody>
-              {filteredContacts.map((contact: any) => (
-                <TableRow key={contact.id} className="border-border">
-                  <TableCell className="text-foreground font-medium">{contact.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{contact.subject}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{new Date(contact.submitted_at).toLocaleDateString()}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          )}
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Subject</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={3} /> : (
+              <TableBody>
+                {filteredContacts.map((contact: any) => (
+                  <TableRow key={contact.id} className="border-border">
+                    <TableCell className="text-foreground font-medium">{contact.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{contact.subject}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{new Date(contact.submitted_at).toLocaleDateString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1352,6 +1649,7 @@ export const InstructorManager = () => {
       toast.error(error.message);
     } else {
       toast.success('User promoted to Instructor!');
+      logActivity('promote_instructor', `Promoted user ${foundUser.email} to Instructor role`, user?.email);
       setFoundUser(null);
       setSearchEmail('');
       queryClient.invalidateQueries({ queryKey: ['admin_instructors'] });
@@ -1428,8 +1726,11 @@ export const InstructorManager = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure?')) return;
-    await supabase.from('instructors').delete().eq('id', id);
-    queryClient.invalidateQueries({ queryKey: ['admin_instructors'] });
+    const { error } = await supabase.from('instructors').delete().eq('id', id);
+    if (!error) {
+      logActivity('delete_instructor', `Removed instructor profile ID: ${id}`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['admin_instructors'] });
+    }
   };
 
   return (
@@ -1515,30 +1816,125 @@ export const InstructorManager = () => {
       </div>
     </CardHeader>
       <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border">
-              <TableHead className="text-[10px] font-bold uppercase">Name</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase">Email</TableHead>
-              <TableHead className="text-[10px] font-bold uppercase text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? <TableSkeleton cols={3} /> : (
-            <TableBody>
-              {filteredInstructors.map((ins: any) => (
-                <TableRow key={ins.id} className="border-border">
-                  <TableCell className="font-medium">{ins.full_name}</TableCell>
-                  <TableCell>{ins.email}</TableCell>
-                  <TableCell className="text-right flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => { setEditingInstructor(ins); setIsFormOpen(true); }} className="text-primary uppercase text-[10px] font-bold">Edit</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(ins.id)} className="text-destructive uppercase text-[10px] font-bold">Delete</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          )}
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border">
+                <TableHead className="text-[10px] font-bold uppercase">Name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase">Email</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={3} /> : (
+              <TableBody>
+                {filteredInstructors.map((ins: any) => (
+                  <TableRow key={ins.id} className="border-border">
+                    <TableCell className="font-medium">{ins.full_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{ins.email}</TableCell>
+                    <TableCell className="text-right flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => { setEditingInstructor(ins); setIsFormOpen(true); }} className="h-8 text-primary uppercase text-[10px] font-bold">Edit</Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(ins.id)} className="h-8 text-destructive uppercase text-[10px] font-bold">Delete</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
 };
+
+// --- ACTIVITY LOGS ---
+export const ActivityLogs = () => {
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ['admin_site_logs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('site_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (error) {
+        console.error('Error fetching logs:', error);
+        return [];
+      }
+      return data || [];
+    }
+  });
+
+  return (
+    <Card className="bg-card border-border rounded-[2rem] overflow-hidden shadow-2xl">
+      <CardHeader className="border-b border-border pb-6 flex flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-primary/10 rounded-2xl">
+            <Activity className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-2xl font-display uppercase tracking-tight text-foreground">Activity Logs</CardTitle>
+            <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">System-wide audit trail</p>
+          </div>
+        </div>
+        <Badge variant="outline" className="bg-muted text-muted-foreground uppercase text-[10px] tracking-widest font-bold">{logs.length} Recent</Badge>
+      </CardHeader>
+      <CardContent className="pt-6">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">User / Entity</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Action</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Details</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Timestamp</TableHead>
+              </TableRow>
+            </TableHeader>
+            {isLoading ? <TableSkeleton cols={4} /> : (
+              <TableBody>
+                {logs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-20">
+                      <div className="max-w-xs mx-auto space-y-4">
+                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto opacity-20">
+                          <Activity className="w-8 h-8" />
+                        </div>
+                        <p className="text-muted-foreground font-light text-sm italic">No logs found. Ensure the 'site_logs' table is initialized in Supabase.</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  logs.map((log: any) => (
+                    <TableRow key={log.id} className="border-border hover:bg-accent/50 group transition-colors">
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-foreground text-sm truncate max-w-[150px]">{log.user_email || 'System'}</span>
+                          {log.ip_address && <span className="text-[10px] text-muted-foreground font-mono">{log.ip_address}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn(
+                          "text-[9px] uppercase tracking-tighter font-black",
+                          log.action?.includes('delete') ? "bg-destructive/10 text-destructive" :
+                          log.action?.includes('create') || log.action?.includes('insert') ? "bg-green-500/10 text-green-500" :
+                          log.action?.includes('update') ? "bg-cyan/10 text-cyan" : "bg-muted text-muted-foreground"
+                        )}>
+                          {log.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-foreground/80 text-xs font-light">{log.details}</TableCell>
+                      <TableCell className="text-right text-[10px] text-muted-foreground font-mono">
+                        {new Date(log.created_at).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            )}
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+

@@ -54,19 +54,7 @@ const AchievementsSection = () => {
       if (error) {
         console.error('Error fetching stats:', error);
       } else {
-        // Fetch real student count as a fallback/sync check
-        const { count: realCount } = await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true });
-
-        const updatedStats = data?.map(s => {
-          if (s.key === 'students_trained') {
-            return { ...s, value: Math.max(s.value, realCount || 0) };
-          }
-          return s;
-        });
-
-        const sortedStats = updatedStats?.sort((a, b) => {
+        const sortedStats = data?.sort((a, b) => {
           const order = ['students_trained', 'courses_offered', 'internship_options', 'years_active'];
           return order.indexOf(a.key) - order.indexOf(b.key);
         });

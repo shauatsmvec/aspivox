@@ -12,6 +12,7 @@ const Contact = lazy(() => import("./pages/Contact"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const CertificateValidator = lazy(() => import("./pages/CertificateValidator"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 
@@ -24,6 +25,7 @@ const StatsManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => 
 const CoursesManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.CoursesManager })));
 const TeamManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.TeamManager })));
 const InstructorManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.InstructorManager })));
+const ActivityLogs = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.ActivityLogs })));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const InstructorDashboard = lazy(() => import("./pages/InstructorDashboard"));
@@ -83,6 +85,10 @@ export const router = createBrowserRouter([
     element: withSuspense(ResetPassword),
   },
   {
+    path: "/verify",
+    element: withSuspense(CertificateValidator),
+  },
+  {
     element: <ProtectedRoute />,
     children: [
       {
@@ -133,6 +139,10 @@ export const router = createBrowserRouter([
           {
             path: "instructors",
             element: withSuspense(InstructorManager),
+          },
+          {
+            path: "logs",
+            element: withSuspense(ActivityLogs),
           },
           {
             path: "stats",

@@ -1,9 +1,10 @@
 import React from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, BookOpen, FileText, MessageSquare, ArrowRight } from 'lucide-react';
+import { Users, BookOpen, FileText, MessageSquare, ArrowRight, Download, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import JSZip from 'jszip';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -12,22 +13,23 @@ import { useQuery } from '@tanstack/react-query';
 
 const AdminDashboard = () => {
   const { user, isAdmin } = useAuth();
+  const [isBackingUp, setIsBackingUp] = React.useState(false);
   const { data: stats = { students: 0, enrollments: 0, applications: 0, contacts: 0 }, isLoading: loading, refetch: fetchData } = useQuery({
     queryKey: ['admin_dashboard_stats'],
     queryFn: async () => {
-      const [s, e, a, c] = await Promise.all([
-        supabase.from('students').select('*', { count: 'exact', head: true }),
+      const [sData, e, a, c, iData] = await Promise.all([
+        supabase.from('students').select('email'),
         supabase.from('enrollments').select('*', { count: 'exact', head: true }),
         supabase.from('internship_applications').select('*', { count: 'exact', head: true }),
-        supabase.from('contact_submissions').select('*', { count: 'exact', head: true })
+        supabase.from('contact_submissions').select('*', { count: 'exact', head: true }),
+        supabase.from('instructors').select('email')
       ]);
 
-      if (s.error || e.error || a.error || c.error) {
-        console.error('Data fetch error:', { s: s.error, e: e.error, a: a.error, c: c.error });
-      }
+      const instructorEmails = new Set((iData.data || []).map(i => i.email));
+      const trueStudentCount = (sData.data || []).filter(s => s.email && !instructorEmails.has(s.email)).length;
 
       return {
-        students: s.count || 0,
+        students: trueStudentCount,
         enrollments: e.count || 0,
         applications: a.count || 0,
         contacts: c.count || 0
@@ -42,6 +44,80 @@ const AdminDashboard = () => {
     { title: 'Applications', value: stats.applications, icon: FileText, link: '/admin/applications', color: 'text-cyan' },
     { title: 'Messages', value: stats.contacts, icon: MessageSquare, link: '/admin/contacts', color: 'text-primary' }
   ];
+
+  const exportDatabaseBackup = async () => {
+    setIsBackingUp(true);
+    const toastId = toast.loading('Building .zip backup (this may take a moment)...');
+    try {
+      const tables = ['courses', 'students', 'enrollments', 'internship_applications', 'contact_submissions', 'team_members', 'site_stats', 'lms_classes', 'instructors', 'certificates'];
+      const backupData: any = {};
+      
+      const zip = new JSZip();
+
+      // 1. Fetch DB Data
+      for (const table of tables) {
+        const { data, error } = await supabase.from(table).select('*');
+        if (error) {
+          console.warn(`Could not fetch ${table}:`, error.message);
+        } else {
+          backupData[table] = data;
+        }
+      }
+      
+      zip.file('data.json', JSON.stringify(backupData, null, 2));
+
+      // 2. Fetch Images
+      const imagesFolder = zip.folder('images');
+      const fetchImage = async (url: string, name: string) => {
+        if (!url || !url.startsWith('http')) return;
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
+          imagesFolder?.file(`${name}.${ext}`, blob);
+        } catch (e) {
+          console.error('Failed to download image:', url);
+        }
+      };
+
+      const imagePromises: Promise<void>[] = [];
+      if (backupData.team_members) {
+        backupData.team_members.forEach((m: any, i: number) => {
+           if (m.image_url) imagePromises.push(fetchImage(m.image_url, `team_${m.id || i}`));
+        });
+      }
+      if (backupData.instructors) {
+        backupData.instructors.forEach((m: any, i: number) => {
+           if (m.image_url) imagePromises.push(fetchImage(m.image_url, `instructor_${m.id || i}`));
+        });
+      }
+      await Promise.all(imagePromises);
+
+      // 3. Generate Schema Summary
+      const schemaSummary = {
+        tables: tables,
+        notes: "Schema aligns with database.ts definitions. Exported natively from client."
+      };
+      zip.file('schema.json', JSON.stringify(schemaSummary, null, 2));
+
+      // 4. Generate and download ZIP
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `aspivox_full_backup_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Database backup exported successfully!', { id: toastId });
+    } catch (err: any) {
+      toast.error('Failed to export backup: ' + err.message, { id: toastId });
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
 
   return (
     <div className="space-y-10">
@@ -110,6 +186,18 @@ const AdminDashboard = () => {
             </Button>
             <Button asChild variant="outline" className="w-full justify-start rounded-xl">
               <Link to="/">Go to Website</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border rounded-3xl overflow-hidden shadow-xl md:col-span-2">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-xl font-display uppercase flex items-center gap-2"><Database className="w-5 h-5 text-primary" /> Database Management</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
+            <p className="text-sm text-muted-foreground">Download a complete JSON export of all database tables including schema and data. Keep this safe to easily migrate or restore your platform.</p>
+            <Button disabled={isBackingUp} onClick={exportDatabaseBackup} className="bg-primary text-primary-foreground font-bold h-12 px-6 rounded-xl uppercase tracking-widest shadow-lg shadow-primary/20">
+              <Download className="w-4 h-4 mr-2" /> {isBackingUp ? 'Exporting...' : 'Export Database Backup'}
             </Button>
           </CardContent>
         </Card>

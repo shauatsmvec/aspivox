@@ -76,18 +76,22 @@ const TeamSection = () => {
           </div>
         ) : (
           <div 
-            className="relative group/carousel"
+            className="relative overflow-hidden cursor-grab active:cursor-grabbing"
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
           >
             <motion.div 
               ref={scrollRef}
-              className="flex gap-8 overflow-x-auto pb-12 px-4 no-scrollbar cursor-grab active:cursor-grabbing snap-x snap-mandatory"
+              className="flex gap-8 pb-12 px-4"
+              drag="x"
+              dragConstraints={{ 
+                right: 0, 
+                left: team.length > 0 ? -(team.length * 352 - (scrollRef.current?.parentElement?.clientWidth || 1200)) : 0 
+              }}
+              dragElastic={0.1}
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
-              drag="x"
-              dragConstraints={{ right: 0, left: -((team.length * 320) - window.innerWidth + 100) }}
               onDragStart={() => setIsPaused(true)}
             >
               {team.map((member, i) => (
@@ -95,7 +99,7 @@ const TeamSection = () => {
                   key={member.id}
                   whileHover={{ y: -10 }}
                   onClick={() => setSelectedMember(member)}
-                  className="min-w-[280px] sm:min-w-[320px] bg-card backdrop-blur-sm rounded-3xl border border-border p-8 text-center hover:border-primary/50 hover:bg-accent/50 transition-all duration-500 shadow-2xl snap-center group cursor-pointer relative overflow-hidden"
+                  className="min-w-[280px] sm:min-w-[320px] bg-card backdrop-blur-sm rounded-3xl border border-border p-8 text-center hover:border-primary/50 hover:bg-accent/50 transition-all duration-500 shadow-2xl group cursor-pointer relative overflow-hidden flex-shrink-0"
                 >
                   <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Info className="w-4 h-4 text-primary" />

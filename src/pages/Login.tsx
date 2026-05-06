@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { supabase, logActivity } from '@/lib/supabase';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import SEO from '@/components/SEO';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -29,6 +31,7 @@ const Login = () => {
         }
       } else {
         toast.success('Logged in successfully');
+        logActivity('login', `User logged in`, email);
         navigate('/dashboard');
       }
     } catch (err) {
@@ -40,6 +43,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
+      <SEO title="Login | Aspivox" description="Log in to your Aspivox student account." />
       <Navbar />
       <div className="flex-grow flex items-center justify-center pt-32 pb-24 px-4 relative overflow-hidden">
         {/* Subtle background glow */}

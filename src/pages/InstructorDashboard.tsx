@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { supabase, logActivity } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,6 +19,7 @@ const InstructorDashboard = () => {
   const [editingClass, setEditingClass] = useState<any>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed'>('upcoming');
 
   // Fetch instructor details
   const { data: instructor, isLoading: isInstructorLoading } = useQuery({
@@ -44,8 +45,9 @@ const InstructorDashboard = () => {
 
   const updateMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const { error } = await supabase.from('lms_classes').update(payload).eq('id', editingClass.id);
+      const { data, error } = await supabase.from('lms_classes').update(payload).eq('id', editingClass.id).select();
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Update failed: You might not have database permissions to edit this class.");
     },
     onSuccess: () => {
       toast.success('Class details updated');
@@ -55,18 +57,34 @@ const InstructorDashboard = () => {
     onError: (err: any) => toast.error(err.message)
   });
 
-  const toggleStatus = async (id: string, current: boolean) => {
-    const { error } = await supabase.from('lms_classes').update({ is_completed: !current }).eq('id', id);
-    if (error) toast.error(error.message);
-    else queryClient.invalidateQueries({ queryKey: ['instructor_classes'] });
-  };
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, current, title }: { id: string, current: boolean, title: string }) => {
+      const { data, error } = await supabase.from('lms_classes').update({ is_completed: !current }).eq('id', id).select();
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Permission denied or class not found.");
+      return { id, current, title };
+    },
+    onSuccess: ({ current, title }) => {
+      toast.success(`Class marked as ${!current ? 'completed' : 'upcoming'}`);
+      logActivity('toggle_class_status', `Marked class "${title}" as ${!current ? 'completed' : 'upcoming'}`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['instructor_classes'] });
+    },
+    onError: (err: any) => toast.error(err.message)
+  });
 
   const handleUpdate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
+    let meetingLink = formData.get('meeting_link')?.toString().trim();
+    let notesLink = formData.get('notes_link')?.toString().trim();
+    
+    if (meetingLink && !meetingLink.startsWith('http')) meetingLink = 'https://' + meetingLink;
+    if (notesLink && !notesLink.startsWith('http')) notesLink = 'https://' + notesLink;
+
     updateMutation.mutate({
-      meeting_link: formData.get('meeting_link'),
-      notes_link: formData.get('notes_link'),
+      meeting_link: meetingLink || null,
+      notes_link: notesLink || null,
     });
   };
 
@@ -95,18 +113,18 @@ const InstructorDashboard = () => {
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
       <div className="bg-card border-b border-border py-8 mb-10 sticky top-0 z-30 backdrop-blur-xl bg-card/80">
-        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
-              <LayoutDashboard className="w-6 h-6 text-primary" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex justify-between items-center">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+              <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold font-display uppercase">Instructor Portal</h1>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-widest">{instructor?.full_name}</p>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold font-display uppercase truncate">Instructor Portal</h1>
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest truncate">{instructor?.full_name}</p>
             </div>
           </div>
-          <Button onClick={() => signOut()} variant="ghost" className="rounded-xl gap-2 hover:bg-destructive/10 hover:text-destructive">
-            <LogOut className="w-4 h-4" /> Sign Out
+          <Button onClick={() => signOut()} variant="ghost" className="rounded-xl gap-2 hover:bg-destructive/10 hover:text-destructive px-2 sm:px-4">
+            <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Sign Out</span>
           </Button>
         </div>
       </div>
@@ -139,11 +157,27 @@ const InstructorDashboard = () => {
           </Card>
         </div>
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-          <h3 className="text-xl font-bold font-display uppercase flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" /> Schedule & Management
-          </h3>
-          <div className="relative w-full md:w-80">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8 border-b border-border pb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <h3 className="text-lg sm:text-xl font-bold font-display uppercase flex items-center gap-2 mr-4">
+              <Calendar className="w-5 h-5 text-primary" /> Schedule & Management
+            </h3>
+            <div className="flex bg-muted/30 p-1 rounded-xl w-full sm:w-auto">
+              <button 
+                onClick={() => setActiveTab('upcoming')}
+                className={cn("flex-1 sm:flex-none px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === 'upcoming' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              >
+                Upcoming
+              </button>
+              <button 
+                onClick={() => setActiveTab('completed')}
+                className={cn("flex-1 sm:flex-none px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === 'completed' ? "bg-green-500 text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              >
+                Completed
+              </button>
+            </div>
+          </div>
+          <div className="relative w-full lg:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Search assigned classes..." 
@@ -154,54 +188,80 @@ const InstructorDashboard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          {classes.filter((cls: any) => 
-            (cls.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-            (cls.courses?.title || '').toLowerCase().includes(searchTerm.toLowerCase())
-          ).map((cls: any) => (
-            <Card key={cls.id} className="bg-card border-border rounded-3xl overflow-hidden shadow-xl hover:border-primary/20 transition-all group">
-              <div className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={cls.is_completed ? "secondary" : "default"} className="rounded-full px-3 text-[9px] uppercase tracking-tighter">
-                      {cls.is_completed ? "Completed" : "Upcoming"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground font-mono">{new Date(cls.scheduled_at).toLocaleString()}</span>
+        <div className="space-y-10">
+          {(() => {
+            const filteredClasses = classes.filter((cls: any) => {
+              const matchesSearch = (cls.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (cls.courses?.title || '').toLowerCase().includes(searchTerm.toLowerCase());
+              const matchesTab = activeTab === 'upcoming' ? !cls.is_completed : cls.is_completed;
+              return matchesSearch && matchesTab;
+            });
+
+            const groupedClasses = filteredClasses.reduce((acc: any, cls: any) => {
+              const courseTitle = cls.courses?.title || 'Unknown Course';
+              if (!acc[courseTitle]) acc[courseTitle] = [];
+              acc[courseTitle].push(cls);
+              return acc;
+            }, {});
+
+            if (Object.keys(groupedClasses).length === 0) {
+              return (
+                <div className="p-20 text-center bg-card border border-dashed border-border rounded-[3rem]">
+                  <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Clock className="w-10 h-10 text-muted-foreground" />
                   </div>
-                  <h4 className="text-xl font-bold font-display uppercase text-foreground">{cls.title}</h4>
-                  <p className="text-sm text-primary font-bold uppercase tracking-widest">{cls.courses?.title}</p>
+                  <h3 className="text-2xl font-bold font-display uppercase text-muted-foreground">No Classes Found</h3>
+                  <p className="text-muted-foreground mt-2 font-light">
+                    {activeTab === 'upcoming' ? "You don't have any upcoming sessions scheduled." : "You haven't completed any sessions yet."}
+                  </p>
                 </div>
+              );
+            }
 
-                <div className="flex flex-wrap gap-3">
-                  <Button 
-                    variant="outline" 
-                    className={cn("rounded-xl gap-2", cls.is_completed ? "border-green-500/50 text-green-500" : "border-border text-muted-foreground")}
-                    onClick={() => toggleStatus(cls.id, cls.is_completed)}
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> {cls.is_completed ? "Completed" : "Mark Done"}
-                  </Button>
-                  
-                  <Button 
-                    variant="default" 
-                    className="rounded-xl gap-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20"
-                    onClick={() => { setEditingClass(cls); setIsEditOpen(true); }}
-                  >
-                    <Video className="w-4 h-4" /> Manage Links
-                  </Button>
+            return Object.entries(groupedClasses).map(([courseTitle, courseClasses]: [string, any]) => (
+              <div key={courseTitle} className="space-y-4">
+                <h4 className="text-xl font-display uppercase tracking-tight text-primary border-b border-border pb-2 flex items-center justify-between">
+                  {courseTitle}
+                  <Badge variant="outline" className="text-muted-foreground text-[10px] tracking-widest">{courseClasses.length} Session{courseClasses.length !== 1 ? 's' : ''}</Badge>
+                </h4>
+                <div className="grid grid-cols-1 gap-4">
+                  {courseClasses.map((cls: any) => (
+                    <Card key={cls.id} className="bg-card border-border rounded-2xl overflow-hidden shadow-sm hover:border-primary/20 hover:shadow-md transition-all group">
+                      <div className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-1 rounded-md">{new Date(cls.scheduled_at).toLocaleString()}</span>
+                          </div>
+                          <h5 className="text-lg font-bold font-display uppercase text-foreground leading-tight">{cls.title}</h5>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            disabled={statusMutation.isPending}
+                            className={cn("rounded-xl gap-2", cls.is_completed ? "border-green-500/50 text-green-500 bg-green-500/5 hover:bg-green-500/10 hover:text-green-600" : "border-border text-muted-foreground hover:bg-muted")}
+                            onClick={() => statusMutation.mutate({ id: cls.id, current: cls.is_completed, title: cls.title })}
+                          >
+                            <CheckCircle2 className={cn("w-4 h-4", statusMutation.isPending && "animate-spin")} /> {cls.is_completed ? "Completed" : "Mark Done"}
+                          </Button>
+                          
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            className="rounded-xl gap-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20"
+                            onClick={() => { setEditingClass(cls); setIsEditOpen(true); }}
+                          >
+                            <Video className="w-4 h-4" /> Manage Links
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               </div>
-            </Card>
-          ))}
-
-          {classes.length === 0 && (
-            <div className="p-20 text-center bg-card border border-dashed border-border rounded-[3rem]">
-              <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
-                <Clock className="w-10 h-10 text-muted-foreground" />
-              </div>
-              <h3 className="text-2xl font-bold font-display uppercase text-muted-foreground">No Classes Assigned</h3>
-              <p className="text-muted-foreground mt-2 font-light">You'll see your assigned sessions here once an admin schedules them.</p>
-            </div>
-          )}
+            ));
+          })()}
         </div>
       </div>
 
@@ -211,7 +271,7 @@ const InstructorDashboard = () => {
             <DialogTitle className="text-2xl font-display uppercase mb-2">Class Links</DialogTitle>
             <CardDescription>Update the live meeting link and shared resources for this session.</CardDescription>
           </DialogHeader>
-          <form onSubmit={handleUpdate} className="space-y-6 mt-6">
+          <form key={editingClass?.id} onSubmit={handleUpdate} className="space-y-6 mt-6">
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Meeting Link (Zoom/Meet)</Label>
               <Input name="meeting_link" defaultValue={editingClass?.meeting_link} placeholder="https://zoom.us/j/..." className="bg-background border-border rounded-xl h-12" />

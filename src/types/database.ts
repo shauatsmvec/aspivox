@@ -80,6 +80,8 @@ export interface Database {
           course_id: string
           status: 'pending' | 'active' | 'completed' | 'cancelled'
           enrolled_at: string
+          revocation_reason: string | null
+          revoked_at: string | null
         }
         Insert: {
           id?: string
@@ -87,6 +89,8 @@ export interface Database {
           course_id: string
           status?: 'pending' | 'active' | 'completed' | 'cancelled'
           enrolled_at?: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
         }
         Update: {
           id?: string
@@ -94,6 +98,8 @@ export interface Database {
           course_id?: string
           status?: 'pending' | 'active' | 'completed' | 'cancelled'
           enrolled_at?: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
         }
       }
       internship_applications: {
@@ -201,6 +207,32 @@ export interface Database {
           key?: string
           value?: number
           label?: string
+        }
+      }
+      certificates: {
+        Row: {
+          id: string
+          certificate_code: string
+          enrollment_id: string
+          student_name: string
+          course_name: string
+          issued_at: string
+        }
+        Insert: {
+          id?: string
+          certificate_code: string
+          enrollment_id: string
+          student_name: string
+          course_name: string
+          issued_at?: string
+        }
+        Update: {
+          id?: string
+          certificate_code?: string
+          enrollment_id?: string
+          student_name?: string
+          course_name?: string
+          issued_at?: string
         }
       }
       lms_classes: {

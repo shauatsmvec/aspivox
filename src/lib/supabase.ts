@@ -12,3 +12,18 @@ export const supabase = createClient<Database>(
   supabaseUrl || '',
   supabaseAnonKey || ''
 );
+
+// Helper function to log activity site-wide
+export const logActivity = async (action: string, details: string, email?: string) => {
+  try {
+    const { error } = await supabase.from('site_logs').insert([{
+      action,
+      details,
+      user_email: email || 'system',
+      created_at: new Date().toISOString()
+    }]);
+    if (error) console.error('Logging failed:', error);
+  } catch (err) {
+    console.error('Logging exception:', err);
+  }
+};

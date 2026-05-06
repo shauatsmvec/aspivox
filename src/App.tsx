@@ -7,13 +7,17 @@ import { Toaster as HotToaster } from "react-hot-toast";
 import { AuthProvider } from "./context/AuthContext";
 import { router } from "./router";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { HelmetProvider } from "react-helmet-async";
+import { LoadingScreen } from "./components/LoadingScreen";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
+  <HelmetProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <LoadingScreen />
         <TooltipProvider>
           <HotToaster position="top-right" />
           <Toaster />
@@ -23,6 +27,7 @@ const App = () => (
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>
+  </HelmetProvider>
 );
 
 export default App;

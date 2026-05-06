@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { supabase, logActivity } from '@/lib/supabase';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ const Signup = () => {
       toast.error(error.message);
     } else {
       toast.success('Account created! Please check your email to confirm.');
+      logActivity('signup', `New user registered: ${formData.full_name}`, formData.email);
       navigate('/login');
     }
     setLoading(false);
