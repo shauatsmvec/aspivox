@@ -28,6 +28,7 @@ const AdminLayout = () => {
     { label: 'Students', icon: Users, href: '/admin/students' },
     { label: 'Enrollments', icon: BookOpen, href: '/admin/enrollments' },
     { label: 'Applications', icon: FileText, href: '/admin/applications' },
+    { label: 'Domains', icon: Activity, href: '/admin/domains' },
     { label: 'Contacts', icon: MessageSquare, href: '/admin/contacts' },
     { label: 'Site Stats', icon: BarChart3, href: '/admin/stats' },
     { label: 'Activity Logs', icon: Activity, href: '/admin/logs' },

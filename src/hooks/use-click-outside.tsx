@@ -7,7 +7,19 @@ export function useClickOutside<T extends HTMLElement = HTMLElement>(
   useEffect(() => {
     const listener = (event: MouseEvent | TouchEvent) => {
       const el = ref?.current;
-      if (!el || el.contains((event?.target as Node) || null)) {
+      const target = event.target as HTMLElement;
+
+      // Ignore if click is inside the target element
+      if (!el || el.contains(target || null)) {
+        return;
+      }
+
+      // Ignore if click is on a Radix UI portal (like Select dropdowns)
+      if (
+        target?.closest('[data-radix-portal]') || 
+        target?.closest('[role="listbox"]') ||
+        target?.closest('.radix-select-content')
+      ) {
         return;
       }
 

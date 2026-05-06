@@ -9,9 +9,11 @@ import TeamSection from "@/components/TeamSection";
 import VisionMissionSection from "@/components/VisionMissionSection";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 
 const Index = () => (
   <div className="min-h-screen">
+    <SEO title="Aspivox | Start Today, State Tomorrow" description="Elevating education through expert-led courses and hands-on internship opportunities." />
     <Navbar />
     <HeroSection />
     <AboutSection />

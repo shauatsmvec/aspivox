@@ -1,12 +1,25 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 
-const Spline = lazy(() => import("@splinetool/react-spline"));
+import Spline from "@splinetool/react-spline";
 
 const HeroSection = () => {
+  const [webglSupported, setWebglSupported] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    // Check for WebGL support
+    try {
+      const canvas = document.createElement('canvas');
+      const support = !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+      setWebglSupported(support);
+    } catch (e) {
+      setWebglSupported(false);
+    }
+  }, []);
+
   const { data: studentCount } = useQuery({
     queryKey: ['hero_stats'],
     queryFn: async () => {
@@ -40,7 +53,7 @@ const HeroSection = () => {
       className="relative min-h-screen w-full flex items-center overflow-hidden bg-background pt-20"
     >
       {/* Content Layer */}
-      <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-12">
+      <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-12 grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] items-center gap-12">
         <div className="max-w-2xl">
           <motion.div
             initial={{ opacity: 0, x: -50 }}
@@ -83,7 +96,6 @@ const HeroSection = () => {
             {/* Compact Trust badges */}
             <div className="flex items-center gap-8">
               {[
-                { emoji: "🎓", text: `${studentCount} Students` },
                 { emoji: "💻", text: "Online" },
                 { emoji: "✅", text: "MSME" },
               ].map((badge) => (
@@ -95,26 +107,74 @@ const HeroSection = () => {
             </div>
           </motion.div>
         </div>
-      </div>
 
-      {/* Spline Side Layer - Pushed to the far right */}
-      <div className="absolute top-0 right-[-10%] w-[65%] h-full z-10 pointer-events-none lg:pointer-events-auto">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, delay: 0.3 }}
-          className="w-full h-full"
-        >
-          <Suspense fallback={<div className="w-full h-full bg-transparent" />}>
-            <Spline 
-              scene="https://prod.spline.design/dXbKN4kUfFQRNx-Q/scene.splinecode" 
-            />
-          </Suspense>
-        </motion.div>
-        
-        {/* Gradients to blend Spline */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-transparent z-10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent z-10" />
+        {/* Spline Side Layer - Now part of the grid */}
+        <div className="relative w-full h-[500px] lg:h-[700px] pointer-events-none lg:pointer-events-auto overflow-hidden rounded-3xl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, x: 50 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={{ duration: 1.2, delay: 0.3 }}
+            className="w-full h-full relative"
+          >
+            {webglSupported ? (
+              <SplineErrorBoundary>
+                <Suspense fallback={
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                  </div>
+                }>
+                  <Spline 
+                    scene="https://prod.spline.design/dXbKN4kUfFQRNx-Q/scene.splinecode" 
+                  />
+                </Suspense>
+              </SplineErrorBoundary>
+            ) : (
+              <div className="w-full h-full relative flex items-center justify-center bg-muted/5 border border-border/50 overflow-hidden rounded-3xl">
+                {/* Premium High-Res Fallback Image */}
+                <motion.img 
+                  initial={{ scale: 1.1, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 0.5 }}
+                  transition={{ duration: 1.5 }}
+                  src="https://images.unsplash.com/photo-1639322537228-f710d846310a?q=80&w=2000&auto=format&fit=crop" 
+                  alt="Aspivox Tech"
+                  className="w-full h-full object-cover"
+                />
+                
+                {/* Floating UI Elements */}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                  <motion.div 
+                    animate={{ y: [0, -20, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-1/4 left-1/4 w-32 h-32 bg-primary/10 rounded-2xl backdrop-blur-xl border border-primary/20 flex items-center justify-center"
+                  >
+                     <div className="w-12 h-2 bg-primary/40 rounded-full" />
+                  </motion.div>
+                  <motion.div 
+                    animate={{ y: [0, 20, 0] }}
+                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                    className="absolute bottom-1/4 right-1/4 w-24 h-24 bg-accent/10 rounded-full backdrop-blur-xl border border-accent/20"
+                  />
+                </div>
+
+                <div className="absolute inset-0 bg-gradient-to-br from-background via-transparent to-transparent z-20" />
+                
+                <div className="absolute bottom-6 right-6 p-4 bg-background/80 backdrop-blur-md border border-border rounded-xl max-w-[200px] z-30 shadow-2xl">
+                   <p className="text-[8px] font-bold uppercase tracking-widest text-primary mb-1 flex items-center gap-1">
+                     <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                     Optimized Mode
+                   </p>
+                   <p className="text-[10px] text-muted-foreground leading-tight">
+                     Interactive 3D is unavailable in this browser. Showing high-performance visuals instead.
+                   </p>
+                </div>
+              </div>
+            )}
+          </motion.div>
+          
+          {/* Gradients to blend visuals */}
+          <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-transparent z-10 lg:hidden" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent z-10" />
+        </div>
       </div>
 
       {/* Ambient background glow */}
@@ -125,3 +185,27 @@ const HeroSection = () => {
 };
 
 export default HeroSection;
+
+class SplineErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.warn("Spline/WebGL Error handled:", error.message);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full bg-gradient-to-br from-primary/10 to-transparent blur-3xl opacity-50" />
+      );
+    }
+    return this.props.children;
+  }
+}

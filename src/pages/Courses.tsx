@@ -1,10 +1,12 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CoursesSection from "@/components/CoursesSection";
+import SEO from "@/components/SEO";
 
 const Courses = () => {
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Courses | Aspivox" description="Explore our catalog of professional courses including Python, Java, Data Science, and more." />
       <Navbar />
       <div className="pt-32 pb-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">

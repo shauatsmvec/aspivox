@@ -28,6 +28,8 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
   const { user, studentProfile, loading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [courses, setCourses] = useState<any[]>([]);
+  const [existingApplication, setExistingApplication] = useState<any>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -42,22 +44,59 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
     },
   });
 
+  const watchEmail = form.watch('email');
+
   useEffect(() => {
-    const fetchCourses = async () => {
+    const checkExisting = async () => {
+      if (!user?.email && !form.getValues('email')) {
+        setCheckingExisting(false);
+        return;
+      }
+      
+      const emailToCheck = user?.email || form.getValues('email');
+      if (!emailToCheck) {
+        setCheckingExisting(false);
+        return;
+      }
+
       try {
-        const { data, error } = await supabase.from('courses').select('title').eq('is_active', true);
-        if (error) console.error('Error fetching courses for form:', error);
-        else setCourses(data || []);
+        const { data, error } = await supabase
+          .from('internship_applications')
+          .select('status, preferred_domain, submitted_at')
+          .eq('email', emailToCheck)
+          .neq('status', 'rejected')
+          .order('submitted_at', { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          setExistingApplication(data[0]);
+        } else {
+          setExistingApplication(null);
+        }
       } catch (err) {
-        console.error('fetchCourses error:', err);
+        console.error('Error checking existing application:', err);
+      } finally {
+        setCheckingExisting(false);
       }
     };
-    fetchCourses();
-  }, []);
+
+    const fetchDomains = async () => {
+      try {
+        const { data, error } = await supabase.from('domains').select('name').eq('is_active', true);
+        if (error) console.error('Error fetching domains for form:', error);
+        else setCourses(data || []);
+      } catch (err) {
+        console.error('fetchDomains error:', err);
+      }
+    };
+
+    checkExisting();
+    fetchDomains();
+  }, [user, watchEmail]);
 
   useEffect(() => {
     if (!loading && (studentProfile || user)) {
-      console.log('Auto-filling form with profile:', studentProfile?.full_name);
+
       form.reset({
         full_name: studentProfile?.full_name || user?.user_metadata?.full_name || "",
         email: user?.email || "",
@@ -71,6 +110,11 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
   }, [studentProfile, user, loading, form]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (existingApplication) {
+      toast.error("You already have an active application.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { error } = await supabase
@@ -78,15 +122,23 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
         .insert([{
           ...values,
           duration: parseInt(values.duration),
-          student_id: user?.id || null
+          student_id: studentProfile ? user?.id : null
         }]);
 
       if (error) {
-        toast.error("Application failed: " + error.message);
+        if (error.code === '23505') {
+          toast.error("You already have a pending application with this email.");
+          setExistingApplication({ status: 'pending', preferred_domain: values.preferred_domain });
+        } else {
+          toast.error("Application failed: " + error.message);
+        }
       } else {
         toast.success("Application submitted! We'll reach out within 2 business days.");
         form.reset();
-        if (onSuccess) onSuccess();
+        if (onSuccess) {
+          // Delay closing slightly to let the toast be seen
+          setTimeout(() => onSuccess(), 1000);
+        }
       }
     } catch (err) {
       toast.error("An unexpected error occurred.");
@@ -94,6 +146,38 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
       setIsSubmitting(false);
     }
   };
+
+  if (checkingExisting) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-muted-foreground text-sm animate-pulse">Checking your application status...</p>
+      </div>
+    );
+  }
+
+  if (existingApplication) {
+    return (
+      <div className="bg-card border border-primary/20 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+          <Loader2 className="w-8 h-8 text-primary animate-spin-slow" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-display uppercase tracking-tight text-foreground">Application In Progress</h3>
+          <p className="text-muted-foreground text-sm">
+            You already have an active application for <span className="text-primary font-bold">{existingApplication.preferred_domain}</span>.
+          </p>
+        </div>
+        <div className="p-4 bg-muted/30 rounded-2xl border border-border inline-block">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest mb-1">Current Status</p>
+          <p className="text-sm font-bold text-primary uppercase">{existingApplication.status}</p>
+        </div>
+        <p className="text-xs text-muted-foreground italic">
+          You can apply for another internship once your current one is rejected or completed.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <Form {...form}>
@@ -188,9 +272,9 @@ const InternshipForm = ({ onSuccess }: { onSuccess?: () => void }) => {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent className="bg-popover border-border text-popover-foreground">
-                    {courses.map((course) => (
-                      <SelectItem key={course.title} value={course.title}>
-                        {course.title}
+                    {courses.map((domain) => (
+                      <SelectItem key={domain.name} value={domain.name}>
+                        {domain.name}
                       </SelectItem>
                     ))}
                     <SelectItem value="Other">Other</SelectItem>

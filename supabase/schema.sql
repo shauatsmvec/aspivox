@@ -1,5 +1,5 @@
--- 1. CLEANUP (Drop existing tables to ensure a fresh start)
-DROP TABLE IF EXISTS site_stats, team_members, contact_submissions, internship_applications, enrollments, students, courses CASCADE;
+-- 1. CLEANUP
+DROP TABLE IF EXISTS site_logs, lms_classes, instructors, certificates, site_stats, team_members, contact_submissions, internship_applications, enrollments, students, courses CASCADE;
 
 -- 2. CREATE TABLES
 
@@ -54,6 +54,7 @@ CREATE TABLE contact_submissions (
   email TEXT NOT NULL,
   subject TEXT,
   message TEXT NOT NULL,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'resolved')),
   submitted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -70,6 +71,54 @@ CREATE TABLE site_stats (
   value INTEGER NOT NULL,
   label TEXT NOT NULL,
   suffix TEXT DEFAULT ''
+);
+
+CREATE TABLE instructors (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  full_name TEXT NOT NULL,
+  designation TEXT,
+  bio TEXT,
+  image_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE lms_classes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  course_id UUID REFERENCES courses(id) ON DELETE CASCADE,
+  instructor_id UUID REFERENCES instructors(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  meeting_link TEXT NOT NULL,
+  notes_link TEXT,
+  recording_link TEXT,
+  is_completed BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE site_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  action TEXT NOT NULL,
+  details TEXT,
+  user_email TEXT,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE certificates (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  certificate_code TEXT NOT NULL UNIQUE,
+  enrollment_id UUID REFERENCES enrollments(id) ON DELETE CASCADE,
+  student_name TEXT NOT NULL,
+  course_name TEXT NOT NULL,
+  issued_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE domains (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 3. INSERT INITIAL DATA
@@ -134,6 +183,11 @@ ALTER TABLE contact_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE instructors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lms_classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE domains ENABLE ROW LEVEL SECURITY;
 
 -- 6. MASTER POLICIES
 
@@ -159,3 +213,16 @@ CREATE POLICY "Admin master contacts" ON contact_submissions FOR ALL USING (LOWE
 CREATE POLICY "Admin master stats" ON site_stats FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
 CREATE POLICY "Admin master team" ON team_members FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
 CREATE POLICY "Admin master courses" ON courses FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master logs" ON site_logs FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master classes" ON lms_classes FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master instructors" ON instructors FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master certificates" ON certificates FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Admin master domains" ON domains FOR ALL USING (LOWER(auth.jwt() ->> 'email') = 'shahid.aspivox@zohomail.in');
+CREATE POLICY "Public read domains" ON domains FOR SELECT USING (true);
+
+-- ADDITIONAL ACCESS
+CREATE POLICY "Instructors read own classes" ON lms_classes FOR SELECT USING (instructor_id IN (SELECT id FROM instructors WHERE LOWER(email) = LOWER(auth.jwt() ->> 'email')));
+CREATE POLICY "Instructors update own classes" ON lms_classes FOR UPDATE USING (instructor_id IN (SELECT id FROM instructors WHERE LOWER(email) = LOWER(auth.jwt() ->> 'email')));
+CREATE POLICY "Public read certificates" ON certificates FOR SELECT USING (true);
+CREATE POLICY "Public read classes" ON lms_classes FOR SELECT USING (true);
+CREATE POLICY "System insert logs" ON site_logs FOR INSERT WITH CHECK (true);

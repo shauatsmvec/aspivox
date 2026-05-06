@@ -1080,7 +1080,13 @@ export const EnrollmentsList = () => {
 export const ApplicationsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: applications = [], isLoading: loading } = useQuery({
     queryKey: ['admin_applications'],
@@ -1102,6 +1108,39 @@ export const ApplicationsList = () => {
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('internship_applications').update({ status }).eq('id', id);
     queryClient.invalidateQueries({ queryKey: ['admin_applications'] });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Password verification
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: confirmPassword,
+      });
+      if (authError) throw new Error('Invalid Admin Password');
+
+      const { error } = await supabase.from('internship_applications').delete().in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      toast.success(`Successfully deleted ${ids.length} application(s)`);
+      logActivity('delete_applications', `Deleted ${ids.length} applications`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['admin_applications'] });
+      setSelectedIds([]);
+      setShowDeleteDialog(false);
+      setConfirmPassword('');
+    },
+    onError: (err: any) => toast.error(err.message)
+  });
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) setSelectedIds(filteredApplications.map((a: any) => a.id));
+    else setSelectedIds([]);
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) setSelectedIds(prev => [...prev, id]);
+    else setSelectedIds(prev => prev.filter(i => i !== id));
   };
 
   return (
@@ -1131,33 +1170,73 @@ export const ApplicationsList = () => {
           </Select>
         </div>
       </CardHeader>
-      <CardContent className="pt-6">
+      <CardContent className="pt-6 relative">
+        {selectedIds.length > 0 && (
+          <div className="absolute top-0 left-0 right-0 bg-accent/80 backdrop-blur border-b border-border p-3 flex items-center justify-between z-10">
+            <span className="text-sm font-bold text-foreground px-4">{selectedIds.length} Selected</span>
+            <Button 
+              size="sm" 
+              variant="destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              className="h-8 uppercase text-[10px] font-bold tracking-widest rounded-lg mr-4"
+            >
+              <Trash2 className="w-3 h-3 mr-2" /> Delete Selected
+            </Button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
-          <Table>
+          <Table className={cn(selectedIds.length > 0 && "mt-12 transition-all")}>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="w-12">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                    checked={filteredApplications.length > 0 && selectedIds.length === filteredApplications.length}
+                    onChange={handleSelectAll}
+                  />
+                </TableHead>
                 <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Domain</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Status</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            {loading ? <TableSkeleton cols={3} /> : (
+            {loading ? <TableSkeleton cols={4} /> : (
               <TableBody>
                 {filteredApplications.map((app: any) => (
                   <TableRow key={app.id} className="border-border hover:bg-accent/50">
+                    <TableCell>
+                       <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                        checked={selectedIds.includes(app.id)}
+                        onChange={(e) => handleSelectOne(app.id, e.target.checked)}
+                      />
+                    </TableCell>
                     <TableCell className="text-foreground">{app.full_name}</TableCell>
                     <TableCell className="text-muted-foreground">{app.preferred_domain}</TableCell>
                     <TableCell className="text-right">
-                      <Select onValueChange={(val) => updateStatus(app.id, val)} defaultValue={app.status}>
-                        <SelectTrigger className="w-[120px] ml-auto bg-background h-8 text-[10px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-popover border-border">
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="accepted">Accepted</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center justify-end gap-2">
+                        <Select onValueChange={(val) => updateStatus(app.id, val)} defaultValue={app.status}>
+                          <SelectTrigger className="w-[100px] bg-background h-8 text-[9px] uppercase font-bold">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover border-border">
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="accepted">Accepted</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => { setSelectedIds([app.id]); setShowDeleteDialog(true); }}
+                          className="h-8 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1165,6 +1244,37 @@ export const ApplicationsList = () => {
             )}
           </Table>
         </div>
+
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="bg-card border-border sm:max-w-[400px] rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="font-display uppercase text-xl text-destructive">Confirm Deletion</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete {selectedIds.length} application(s)? This action is permanent.
+              </p>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase text-muted-foreground">Admin Password</Label>
+                <Input 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  placeholder="Enter password to confirm"
+                  className="bg-background border-border rounded-xl h-12"
+                />
+              </div>
+              <Button 
+                variant="destructive" 
+                className="w-full h-12 rounded-xl font-bold uppercase tracking-widest"
+                disabled={deleteMutation.isPending || !confirmPassword}
+                onClick={() => deleteMutation.mutate(selectedIds)}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Permanently Delete'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -1172,6 +1282,14 @@ export const ApplicationsList = () => {
 
 export const ContactsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'active' | 'resolved'>('active');
+  const [viewingMessage, setViewingMessage] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
   const { data: contacts = [], isLoading: loading } = useQuery({
     queryKey: ['admin_contacts'],
     queryFn: async () => {
@@ -1181,50 +1299,290 @@ export const ContactsList = () => {
     }
   });
 
-  const filteredContacts = contacts.filter((c: any) => 
-    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.message || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const resolveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('contact_submissions').update({ status: 'resolved' }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, id) => {
+      toast.success('Message marked as resolved');
+      logActivity('resolve_contact', `Marked message ID: ${id} as resolved`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['admin_contacts'] });
+    },
+    onError: (err: any) => toast.error(err.message)
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: confirmPassword,
+      });
+      if (authError) throw new Error('Invalid Admin Password');
+
+      const { error } = await supabase.from('contact_submissions').delete().in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      toast.success(`Successfully deleted ${ids.length} message(s)`);
+      logActivity('delete_contacts', `Deleted ${ids.length} contact messages`, user?.email);
+      queryClient.invalidateQueries({ queryKey: ['admin_contacts'] });
+      setSelectedIds([]);
+      setShowDeleteDialog(false);
+      setConfirmPassword('');
+    },
+    onError: (err: any) => toast.error(err.message)
+  });
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) setSelectedIds(filteredContacts.map((c: any) => c.id));
+    else setSelectedIds([]);
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) setSelectedIds(prev => [...prev, id]);
+    else setSelectedIds(prev => prev.filter(i => i !== id));
+  };
+
+  const filteredContacts = contacts.filter((c: any) => {
+    const matchesSearch = 
+      (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.message || '').toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const status = c.status || 'active';
+    return matchesSearch && status === activeTab;
+  });
 
   return (
     <Card className="bg-card border-border rounded-3xl overflow-hidden shadow-2xl">
-      <CardHeader className="border-b border-border pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <CardTitle className="text-2xl font-display uppercase">Messages</CardTitle>
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search messages..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-background border-border rounded-xl h-10 text-xs"
-          />
+      <CardHeader className="border-b border-border pb-6 flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <CardTitle className="text-2xl font-display uppercase">Messages</CardTitle>
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search messages..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-background border-border rounded-xl h-10 text-xs"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto scrollbar-hide">
+          {(['active', 'resolved'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSelectedIds([]); }}
+              className={cn(
+                "px-4 py-2 text-xs font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap",
+                activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </CardHeader>
-      <CardContent className="pt-6">
+
+      <CardContent className="pt-6 relative">
+        {selectedIds.length > 0 && (
+          <div className="absolute top-0 left-0 right-0 bg-accent/80 backdrop-blur border-b border-border p-3 flex items-center justify-between z-10">
+            <span className="text-sm font-bold text-foreground px-4">{selectedIds.length} Selected</span>
+            <Button 
+              size="sm" 
+              variant="destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              className="h-8 uppercase text-[10px] font-bold tracking-widest rounded-lg mr-4"
+            >
+              <Trash2 className="w-3 h-3 mr-2" /> Delete Selected
+            </Button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
-          <Table>
+          <Table className={cn(selectedIds.length > 0 && "mt-12 transition-all")}>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Subject</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Date</TableHead>
+                <TableHead className="w-12">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                    checked={filteredContacts.length > 0 && selectedIds.length === filteredContacts.length}
+                    onChange={handleSelectAll}
+                  />
+                </TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">From</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Subject / Message</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            {loading ? <TableSkeleton cols={3} /> : (
+            {loading ? <TableSkeleton cols={4} /> : (
               <TableBody>
-                {filteredContacts.map((contact: any) => (
-                  <TableRow key={contact.id} className="border-border">
-                    <TableCell className="text-foreground font-medium">{contact.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{contact.subject}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{new Date(contact.submitted_at).toLocaleDateString()}</TableCell>
+                {filteredContacts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-12 text-muted-foreground italic">
+                      No {activeTab} messages found.
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredContacts.map((contact: any) => (
+                    <TableRow key={contact.id} className="border-border hover:bg-accent/30 transition-colors">
+                      <TableCell>
+                         <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                          checked={selectedIds.includes(contact.id)}
+                          onChange={(e) => handleSelectOne(contact.id, e.target.checked)}
+                        />
+                      </TableCell>
+                      <TableCell className="align-top py-4">
+                        <div className="text-foreground font-bold text-sm">{contact.name}</div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-tight">{contact.email}</div>
+                        <div className="text-[9px] text-muted-foreground/60 mt-1">{new Date(contact.submitted_at).toLocaleString()}</div>
+                      </TableCell>
+                      <TableCell className="align-top py-4">
+                        <div className="text-foreground font-semibold text-sm mb-1">{contact.subject || '(No Subject)'}</div>
+                        <div className="text-muted-foreground text-xs line-clamp-2 max-w-md">
+                          {contact.message}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right align-top py-4">
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => setViewingMessage(contact)}
+                            className="h-8 text-primary uppercase text-[10px] font-bold"
+                          >
+                            View
+                          </Button>
+                          {activeTab === 'active' && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              disabled={resolveMutation.isPending}
+                              onClick={() => resolveMutation.mutate(contact.id)}
+                              className="h-8 text-green-500 uppercase text-[10px] font-bold hover:bg-green-500/10"
+                            >
+                              <Check className="w-3 h-3 mr-1" /> Done
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => { setSelectedIds([contact.id]); setShowDeleteDialog(true); }}
+                            className="h-8 text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             )}
           </Table>
         </div>
+
+        <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open && selectedIds.length === 1) setSelectedIds([]);
+        }}>
+          <DialogContent className="bg-card border-border sm:max-w-[400px] rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="font-display uppercase text-xl text-destructive">Confirm Deletion</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete {selectedIds.length} message(s)? This action is permanent.
+              </p>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase text-muted-foreground">Admin Password</Label>
+                <Input 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  placeholder="Enter password to confirm"
+                  className="bg-background border-border rounded-xl h-12"
+                />
+              </div>
+              <Button 
+                variant="destructive" 
+                className="w-full h-12 rounded-xl font-bold uppercase tracking-widest"
+                disabled={deleteMutation.isPending || !confirmPassword}
+                onClick={() => deleteMutation.mutate(selectedIds)}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Permanently Delete'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!viewingMessage} onOpenChange={(open) => !open && setViewingMessage(null)}>
+          <DialogContent className="bg-card border-border sm:max-w-[500px] rounded-3xl p-6">
+            <DialogHeader>
+              <DialogTitle className="font-display uppercase text-xl mb-4">Message Detail</DialogTitle>
+            </DialogHeader>
+            {viewingMessage && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">From</Label>
+                    <div className="text-sm font-medium">{viewingMessage.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{viewingMessage.email}</div>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Received</Label>
+                    <div className="text-[10px] text-muted-foreground">{new Date(viewingMessage.submitted_at).toLocaleString()}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Subject</Label>
+                  <div className="text-sm font-bold bg-muted/30 p-3 rounded-xl border border-border">
+                    {viewingMessage.subject || '(No Subject)'}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Message</Label>
+                  <div className="text-sm leading-relaxed text-foreground bg-muted/10 p-4 rounded-xl border border-border whitespace-pre-wrap">
+                    {viewingMessage.message}
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  {viewingMessage.status !== 'resolved' && (
+                    <Button 
+                      className="flex-1 bg-green-500 text-white font-bold h-12 rounded-xl uppercase tracking-widest"
+                      onClick={() => {
+                        resolveMutation.mutate(viewingMessage.id);
+                        setViewingMessage(null);
+                      }}
+                    >
+                      Mark Resolved
+                    </Button>
+                  )}
+                  <Button 
+                    variant="destructive"
+                    className="flex-1 font-bold h-12 rounded-xl uppercase tracking-widest"
+                    onClick={() => {
+                      setSelectedIds([viewingMessage.id]);
+                      setShowDeleteDialog(true);
+                      setViewingMessage(null);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -1925,6 +2283,142 @@ export const ActivityLogs = () => {
                       <TableCell className="text-foreground/80 text-xs font-light">{log.details}</TableCell>
                       <TableCell className="text-right text-[10px] text-muted-foreground font-mono">
                         {new Date(log.created_at).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            )}
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const DomainsManager = () => {
+  const [editingDomain, setEditingDomain] = useState<any>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  const { data: domains = [], isLoading: loading } = useQuery({
+    queryKey: ['admin_domains'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('domains').select('*').order('name', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (payload: any) => {
+      if (editingDomain?.id) {
+        return supabase.from('domains').update(payload).eq('id', editingDomain.id);
+      }
+      return supabase.from('domains').insert([payload]);
+    },
+    onSuccess: (res) => {
+      if (res.error) throw res.error;
+      toast.success('Domain Saved');
+      setIsFormOpen(false);
+      setEditingDomain(null);
+      queryClient.invalidateQueries({ queryKey: ['admin_domains'] });
+      logActivity(editingDomain?.id ? 'update_domain' : 'create_domain', `Managed domain: ${editingDomain?.name || 'New Domain'}`, user?.email);
+    },
+    onError: (error: any) => toast.error(error.message)
+  });
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure? This might affect existing applications.')) return;
+    const { error } = await supabase.from('domains').delete().eq('id', id);
+    if (!error) {
+      toast.success('Domain deleted');
+      queryClient.invalidateQueries({ queryKey: ['admin_domains'] });
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    mutation.mutate({
+      name: formData.get('name'),
+      is_active: formData.get('is_active') === 'true'
+    });
+  };
+
+  return (
+    <Card className="bg-card border-border rounded-3xl overflow-hidden shadow-2xl">
+      <CardHeader className="border-b border-border pb-6 flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-2xl font-display uppercase">Internship Domains</CardTitle>
+          <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest mt-1">Manage selectable areas for interns</p>
+        </div>
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => setEditingDomain(null)} className="bg-primary text-primary-foreground font-bold h-10 rounded-xl px-6 uppercase tracking-widest">
+              <Plus className="w-4 h-4 mr-2" /> Add Domain
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="bg-card border-border text-foreground sm:max-w-[400px] rounded-3xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-display uppercase mb-4">{editingDomain?.id ? 'Edit' : 'Add'} Domain</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold uppercase text-muted-foreground">Domain Name</Label>
+                <Input name="name" defaultValue={editingDomain?.name} placeholder="e.g. Web Development" required className="bg-background border-border rounded-xl h-12" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold uppercase text-muted-foreground">Status</Label>
+                <Select name="is_active" defaultValue={editingDomain?.is_active?.toString() || 'true'}>
+                  <SelectTrigger className="bg-background border-border rounded-xl h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    <SelectItem value="true">Active (Visible)</SelectItem>
+                    <SelectItem value="false">Inactive (Hidden)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button disabled={mutation.isPending} type="submit" className="w-full bg-primary text-primary-foreground font-bold rounded-xl h-12 uppercase tracking-widest shadow-lg shadow-primary/20">
+                {mutation.isPending ? 'Saving...' : 'Save Domain'}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="pt-6">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border">
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground">Status</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-muted-foreground text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            {loading ? <TableSkeleton cols={3} /> : (
+              <TableBody>
+                {domains.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">No domains added yet.</TableCell>
+                  </TableRow>
+                ) : (
+                  domains.map((d: any) => (
+                    <TableRow key={d.id} className="border-border hover:bg-accent/30 transition-colors">
+                      <TableCell className="font-bold text-foreground">{d.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={d.is_active ? "default" : "secondary"} className={cn(
+                          "text-[9px] uppercase font-black",
+                          d.is_active ? "bg-green-500/10 text-green-500 hover:bg-green-500/20" : "bg-muted text-muted-foreground"
+                        )}>
+                          {d.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => { setEditingDomain(d); setIsFormOpen(true); }} className="h-8 text-primary uppercase text-[10px] font-bold">Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(d.id)} className="h-8 text-destructive uppercase text-[10px] font-bold">Delete</Button>
                       </TableCell>
                     </TableRow>
                   ))

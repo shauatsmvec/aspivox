@@ -83,11 +83,15 @@ const InternshipSection = () => {
               </Button>
             </MorphingPopoverTrigger>
             <MorphingPopoverContent className="max-w-2xl w-[90vw] bg-popover border-border text-popover-foreground p-8 rounded-3xl">
-              <div className="mb-8">
-                <h3 className="text-2xl font-display uppercase tracking-tight text-foreground">Internship Application</h3>
-                <p className="text-muted-foreground text-sm mt-1">Fill out the form below to apply for our internship program.</p>
-              </div>
-              <InternshipForm />
+              {({ close }) => (
+                <>
+                  <div className="mb-8">
+                    <h3 className="text-2xl font-display uppercase tracking-tight text-foreground">Internship Application</h3>
+                    <p className="text-muted-foreground text-sm mt-1">Fill out the form below to apply for our internship program.</p>
+                  </div>
+                  <InternshipForm onSuccess={close} />
+                </>
+              )}
             </MorphingPopoverContent>
           </MorphingPopover>
         </div>

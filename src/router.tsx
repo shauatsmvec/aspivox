@@ -26,6 +26,7 @@ const CoursesManager = lazy(() => import("./pages/admin/AdminSubPages").then(m =
 const TeamManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.TeamManager })));
 const InstructorManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.InstructorManager })));
 const ActivityLogs = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.ActivityLogs })));
+const DomainsManager = lazy(() => import("./pages/admin/AdminSubPages").then(m => ({ default: m.DomainsManager })));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const InstructorDashboard = lazy(() => import("./pages/InstructorDashboard"));
@@ -139,6 +140,10 @@ export const router = createBrowserRouter([
           {
             path: "instructors",
             element: withSuspense(InstructorManager),
+          },
+          {
+            path: "domains",
+            element: withSuspense(DomainsManager),
           },
           {
             path: "logs",

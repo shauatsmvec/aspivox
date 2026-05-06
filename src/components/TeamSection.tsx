@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Mail, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 
 const getInitials = (name: string) =>
   name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -12,8 +13,17 @@ const TeamSection = () => {
   const [team, setTeam] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<any>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [isPaused, setIsPaused] = useState(false);
+  const [api, setApi] = useState<CarouselApi>();
+
+  useEffect(() => {
+    if (!api) return;
+
+    const intervalId = setInterval(() => {
+      api.scrollNext();
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [api]);
 
   useEffect(() => {
     const fetchTeam = async () => {
@@ -33,23 +43,6 @@ const TeamSection = () => {
 
     fetchTeam();
   }, []);
-
-  useEffect(() => {
-    if (loading || team.length === 0 || isPaused) return;
-
-    const interval = setInterval(() => {
-      if (scrollRef.current) {
-        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-        if (scrollLeft + clientWidth >= scrollWidth - 10) {
-          scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
-        } else {
-          scrollRef.current.scrollBy({ left: 320, behavior: 'smooth' });
-        }
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [loading, team, isPaused]);
 
   return (
     <section id="team" className="py-24 lg:py-32 bg-background relative overflow-hidden">
@@ -75,56 +68,48 @@ const TeamSection = () => {
             <div className="animate-spin rounded-full h-14 w-14 border-t-2 border-primary"></div>
           </div>
         ) : (
-          <div 
-            className="relative overflow-hidden cursor-grab active:cursor-grabbing"
-            onMouseEnter={() => setIsPaused(true)}
-            onMouseLeave={() => setIsPaused(false)}
-          >
-            <motion.div 
-              ref={scrollRef}
-              className="flex gap-8 pb-12 px-4"
-              drag="x"
-              dragConstraints={{ 
-                right: 0, 
-                left: team.length > 0 ? -(team.length * 352 - (scrollRef.current?.parentElement?.clientWidth || 1200)) : 0 
+          <div className="relative px-12">
+            <Carousel
+              opts={{
+                align: "start",
+                loop: true,
               }}
-              dragElastic={0.1}
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              onDragStart={() => setIsPaused(true)}
+              setApi={setApi}
+              className="w-full"
             >
-              {team.map((member, i) => (
-                <motion.div
-                  key={member.id}
-                  whileHover={{ y: -10 }}
-                  onClick={() => setSelectedMember(member)}
-                  className="min-w-[280px] sm:min-w-[320px] bg-card backdrop-blur-sm rounded-3xl border border-border p-8 text-center hover:border-primary/50 hover:bg-accent/50 transition-all duration-500 shadow-2xl group cursor-pointer relative overflow-hidden flex-shrink-0"
-                >
-                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Info className="w-4 h-4 text-primary" />
-                  </div>
-                  
-                  <div className="w-28 h-28 rounded-full overflow-hidden mx-auto mb-8 border-2 border-primary/20 p-1 group-hover:border-primary transition-colors duration-500">
-                    {member.image_url ? (
-                      <img src={member.image_url} alt={member.name} className="w-full h-full object-cover rounded-full" />
-                    ) : (
-                      <div className="w-full h-full rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold font-display">
-                        {getInitials(member.name)}
+              <CarouselContent className="-ml-4 sm:-ml-8">
+                {team.map((member, i) => (
+                  <CarouselItem key={member.id} className="pl-4 sm:pl-8 basis-full sm:basis-1/2 lg:basis-1/3 xl:basis-1/4">
+                    <motion.div
+                      whileHover={{ y: -10 }}
+                      onClick={() => setSelectedMember(member)}
+                      className="h-full bg-card backdrop-blur-sm rounded-3xl border border-border p-8 text-center hover:border-primary/50 hover:bg-accent/50 transition-all duration-500 shadow-2xl group cursor-pointer relative overflow-hidden"
+                    >
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Info className="w-4 h-4 text-primary" />
                       </div>
-                    )}
-                  </div>
-                  
-                  <h3 className="font-bold text-foreground text-xl font-display uppercase tracking-tight">{member.name}</h3>
-                  <p className="text-primary text-[10px] font-bold mt-2 uppercase tracking-widest bg-primary/10 inline-block px-3 py-1 rounded-full">{member.designation}</p>
-                </motion.div>
-              ))}
-            </motion.div>
-            
-            {/* Visual hint for scrolling */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1 items-center text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-50">
-              <span>{isPaused ? 'Paused' : 'Auto-rotating'} • Drag to explore</span>
-            </div>
+                      
+                      <div className="w-28 h-28 rounded-full overflow-hidden mx-auto mb-8 border-2 border-primary/20 p-1 group-hover:border-primary transition-colors duration-500">
+                        {member.image_url ? (
+                          <img src={member.image_url} alt={member.name} className="w-full h-full object-cover rounded-full" />
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold font-display">
+                            {getInitials(member.name)}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <h3 className="font-bold text-foreground text-xl font-display uppercase tracking-tight">{member.name}</h3>
+                      <p className="text-primary text-[10px] font-bold mt-2 uppercase tracking-widest bg-primary/10 inline-block px-3 py-1 rounded-full">{member.designation}</p>
+                    </motion.div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <div className="hidden sm:block">
+                <CarouselPrevious className="bg-background/50 backdrop-blur-md border-border -left-6 h-12 w-12" />
+                <CarouselNext className="bg-background/50 backdrop-blur-md border-border -right-6 h-12 w-12" />
+              </div>
+            </Carousel>
           </div>
         )}
       </div>
