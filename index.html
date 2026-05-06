@@ -18,6 +18,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <script>
+      // Early recovery for production chunk loading issues
+      window.addEventListener('error', (e) => {
+        const msg = e.message || '';
+        if (msg.includes('Failed to fetch dynamically imported module') || 
+            msg.includes('Importing a stopped module')) {
+          console.warn('Deployment update detected. Refreshing...');
+          window.location.reload();
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>
