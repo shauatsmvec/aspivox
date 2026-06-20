@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { Database } from '../types/database';
 
@@ -61,6 +61,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      clearAuth();
+      setLoading(false);
+      return;
+    }
+
     // Initial sync
     supabase.auth.getSession().then(({ data: { session } }) => {
       syncAuth(session);
@@ -75,10 +81,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signIn = async (data: { email: string; password: any }) => {
+    if (!isSupabaseConfigured) {
+      return { error: { message: 'Supabase is not configured.' } };
+    }
+
     return await supabase.auth.signInWithPassword(data);
   };
 
   const signUp = async (data: { email: string; password: any; full_name: string; phone: string; college: string; city: string }) => {
+    if (!isSupabaseConfigured) {
+      return { error: { message: 'Supabase is not configured.' } };
+    }
+
     const { email, password, ...metadata } = data;
     return await supabase.auth.signUp({
       email,
@@ -88,6 +102,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    if (!isSupabaseConfigured) {
+      clearAuth();
+      return;
+    }
+
     await supabase.auth.signOut();
     clearAuth();
     window.location.href = '/';
